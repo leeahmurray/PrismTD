@@ -17,6 +17,10 @@ Open the local URL printed by Vite.
 npm run build
 ```
 
+## Deploy Workflow
+
+See [`docs/DEPLOYMENT.md`](/Users/leeahmurray/Desktop/PrismTD/docs/DEPLOYMENT.md) for the safe `feature -> staging -> main` flow, CI checks, and Vercel domain mapping.
+
 ## Controls
 
 - Click a tower in the build palette to enter placement mode.
