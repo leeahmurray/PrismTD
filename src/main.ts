@@ -71,6 +71,7 @@ function setupBackgroundMusic(): {
   prevTrack: () => void;
   nextTrack: () => void;
   togglePlayPause: () => boolean;
+  ensurePlaying: () => void;
   stop: () => void;
   getState: () => { isPlaying: boolean; currentTrackTitle: string; tracks: Array<{ id: string; title: string }> };
 } {
@@ -86,13 +87,13 @@ function setupBackgroundMusic(): {
   const music = new Audio(encodeURI(tracks[trackIndex].file));
   music.loop = true;
   music.preload = 'auto';
+  music.setAttribute('playsinline', 'true');
   music.volume = 0;
   let isPlaying = true;
 
   const targetVolume = 0.36;
   const fadeDurationMs = 4500;
   let playSucceeded = false;
-  let attemptInFlight = false;
 
   const fadeIn = (): void => {
     const fadeStart = performance.now();
@@ -113,43 +114,44 @@ function setupBackgroundMusic(): {
     window.removeEventListener('touchstart', interactionStart);
   };
 
-  const attemptPlay = async (resetTime: boolean): Promise<boolean> => {
-    try {
-      if (!isPlaying) {
-        return false;
-      }
-      if (resetTime) {
-        music.currentTime = 0;
-      }
-      await music.play();
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const tryStart = async (resetTime: boolean): Promise<void> => {
-    if (playSucceeded || attemptInFlight) {
+  const tryStart = (resetTime: boolean): void => {
+    if (!isPlaying) {
       return;
     }
-    attemptInFlight = true;
-
-    let started = await attemptPlay(resetTime);
-    attemptInFlight = false;
-    if (started) {
-      playSucceeded = true;
-      fadeIn();
-      clearUnlockListeners();
+    if (resetTime) {
+      music.currentTime = 0;
+      music.volume = 0;
     }
+    const playPromise = music.play();
+    if (playPromise === undefined) {
+      const shouldFade = resetTime || !playSucceeded;
+      playSucceeded = true;
+      if (shouldFade) {
+        fadeIn();
+      }
+      clearUnlockListeners();
+      return;
+    }
+
+    void playPromise
+      .then(() => {
+        const shouldFade = resetTime || !playSucceeded;
+        playSucceeded = true;
+        if (shouldFade) {
+          fadeIn();
+        }
+        clearUnlockListeners();
+      })
+      .catch(() => {});
   };
 
   const interactionStart = (): void => {
     if (isPlaying) {
-      void tryStart(false);
+      tryStart(false);
     }
   };
 
-  void tryStart(true);
+  tryStart(true);
   window.addEventListener('pointerdown', interactionStart);
   window.addEventListener('keydown', interactionStart);
   window.addEventListener('mousedown', interactionStart);
@@ -161,9 +163,8 @@ function setupBackgroundMusic(): {
     music.src = encodeURI(track.file);
     music.load();
     playSucceeded = false;
-    attemptInFlight = false;
     if (isPlaying) {
-      void tryStart(true);
+      tryStart(true);
     }
   };
 
@@ -180,13 +181,20 @@ function setupBackgroundMusic(): {
         music.pause();
         return false;
       }
-      void tryStart(false);
+      tryStart(false);
       return true;
+    },
+    ensurePlaying: () => {
+      if (!isPlaying) {
+        return;
+      }
+      tryStart(false);
     },
     stop: () => {
       isPlaying = false;
       music.pause();
       music.currentTime = 0;
+      playSucceeded = false;
     },
     getState: () => ({
       isPlaying,
@@ -303,10 +311,20 @@ const ui = new UI(headerRoot, sidebarRoot, {
   },
   onCycleMode: (delta) => game.cycleMode(delta),
   onCycleMap: (delta) => game.cycleMap(delta),
-  onStartWave: () => game.startWave(),
-  onQueueWave: () => game.sendNextWaveEarly(),
-  onToggleSpeed: () => game.toggleSpeed(),
+  onStartWave: () => {
+    musicController.ensurePlaying();
+    game.startWave();
+  },
+  onQueueWave: () => {
+    musicController.ensurePlaying();
+    game.sendNextWaveEarly();
+  },
+  onToggleSpeed: () => {
+    musicController.ensurePlaying();
+    game.toggleSpeed();
+  },
   onTogglePause: () => {
+    musicController.ensurePlaying();
     game.togglePause();
     const nowPaused = game.getSnapshot().paused;
     if (!nowPaused) {
@@ -347,6 +365,14 @@ const ui = new UI(headerRoot, sidebarRoot, {
   },
   getMusicState: () => musicController.getState(),
 });
+
+app.addEventListener(
+  'pointerdown',
+  () => {
+    musicController.ensurePlaying();
+  },
+  true,
+);
 
 let lastHoverElement: Element | null = null;
 app.addEventListener(
