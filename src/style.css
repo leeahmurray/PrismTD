@@ -712,6 +712,8 @@ button {
   padding: 6px 10px;
   cursor: pointer;
   transition: 120ms ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button:hover:not(:disabled) {
