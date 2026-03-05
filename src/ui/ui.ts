@@ -132,7 +132,7 @@ export class UI {
     this.speedEl = document.createElement('button');
     this.speedEl.className = 'status-mini-btn utility-btn speed-square';
     this.speedEl.textContent = '1x';
-    this.speedEl.addEventListener('click', () => this.actions.onToggleSpeed());
+    this.bindButtonPress(this.speedEl, () => this.actions.onToggleSpeed());
 
     const modeControl = document.createElement('div');
     modeControl.className = 'mode-control';
@@ -144,7 +144,7 @@ export class UI {
     const modePrev = document.createElement('button');
     modePrev.className = 'mode-nav-btn';
     modePrev.textContent = '‹';
-    modePrev.addEventListener('click', () => this.actions.onCycleMode(-1));
+    this.bindButtonPress(modePrev, () => this.actions.onCycleMode(-1));
 
     this.modeNameEl = document.createElement('span');
     this.modeNameEl.className = 'mode-name';
@@ -152,7 +152,7 @@ export class UI {
     const modeNext = document.createElement('button');
     modeNext.className = 'mode-nav-btn';
     modeNext.textContent = '›';
-    modeNext.addEventListener('click', () => this.actions.onCycleMode(1));
+    this.bindButtonPress(modeNext, () => this.actions.onCycleMode(1));
 
     modeControl.append(modeLabel, modePrev, this.modeNameEl, modeNext);
 
@@ -166,7 +166,7 @@ export class UI {
     const mapPrev = document.createElement('button');
     mapPrev.className = 'map-nav-btn';
     mapPrev.textContent = '‹';
-    mapPrev.addEventListener('click', () => this.cycleMap(-1));
+    this.bindButtonPress(mapPrev, () => this.cycleMap(-1));
 
     this.mapNameEl = document.createElement('span');
     this.mapNameEl.className = 'map-name';
@@ -174,7 +174,7 @@ export class UI {
     const mapNext = document.createElement('button');
     mapNext.className = 'map-nav-btn';
     mapNext.textContent = '›';
-    mapNext.addEventListener('click', () => this.cycleMap(1));
+    this.bindButtonPress(mapNext, () => this.cycleMap(1));
 
     mapControl.append(mapLabel, mapPrev, this.mapNameEl, mapNext);
 
@@ -182,19 +182,19 @@ export class UI {
     this.pauseEl.className = 'status-mini-btn utility-btn icon-only';
     this.pauseEl.textContent = '⏸';
     this.pauseEl.title = 'Pause';
-    this.pauseEl.addEventListener('click', () => this.actions.onTogglePause());
+    this.bindButtonPress(this.pauseEl, () => this.actions.onTogglePause());
 
     this.restartEl = document.createElement('button');
     this.restartEl.className = 'status-mini-btn utility-btn icon-only';
     this.restartEl.textContent = '↻';
     this.restartEl.title = 'Restart';
-    this.restartEl.addEventListener('click', () => this.actions.onRestart());
+    this.bindButtonPress(this.restartEl, () => this.actions.onRestart());
 
     this.startWaveEl = document.createElement('button');
     this.startWaveEl.className = 'wave-btn wave-start-btn';
     this.startWaveEl.textContent = 'Start';
     this.startWaveEl.dataset.mode = 'start';
-    this.startWaveEl.addEventListener('click', () => {
+    this.bindButtonPress(this.startWaveEl, () => {
       if (this.startWaveEl.dataset.mode === 'send') {
         this.actions.onQueueWave();
       } else {
@@ -205,7 +205,7 @@ export class UI {
     this.autoWaveEl = document.createElement('button');
     this.autoWaveEl.className = 'wave-btn auto-toggle-btn';
     this.autoWaveEl.textContent = 'Auto';
-    this.autoWaveEl.addEventListener('click', () => {
+    this.bindButtonPress(this.autoWaveEl, () => {
       const nextEnabled = !this.autoWaveEl.classList.contains('on');
       this.actions.onSetAutoWaveEnabled(nextEnabled);
     });
@@ -234,7 +234,7 @@ export class UI {
     musicPrevEl.className = 'music-nav-btn';
     musicPrevEl.textContent = '‹';
     musicPrevEl.title = 'Previous Track';
-    musicPrevEl.addEventListener('click', () => {
+    this.bindButtonPress(musicPrevEl, () => {
       this.actions.onMusicPrev();
       this.syncMusicState();
     });
@@ -246,7 +246,7 @@ export class UI {
     this.musicPlayPauseEl.className = 'music-nav-btn music-play-toggle';
     this.musicPlayPauseEl.textContent = '⏸';
     this.musicPlayPauseEl.title = 'Play/Pause';
-    this.musicPlayPauseEl.addEventListener('click', () => {
+    this.bindButtonPress(this.musicPlayPauseEl, () => {
       this.actions.onToggleMusicPlayPause();
       this.syncMusicState();
     });
@@ -255,7 +255,7 @@ export class UI {
     musicStopEl.className = 'music-nav-btn';
     musicStopEl.textContent = '■';
     musicStopEl.title = 'Stop';
-    musicStopEl.addEventListener('click', () => {
+    this.bindButtonPress(musicStopEl, () => {
       this.actions.onStopMusic();
       this.syncMusicState();
     });
@@ -264,7 +264,7 @@ export class UI {
     musicNextEl.className = 'music-nav-btn';
     musicNextEl.textContent = '›';
     musicNextEl.title = 'Next Track';
-    musicNextEl.addEventListener('click', () => {
+    this.bindButtonPress(musicNextEl, () => {
       this.actions.onMusicNext();
       this.syncMusicState();
     });
@@ -422,6 +422,31 @@ export class UI {
     });
 
     return button;
+  }
+
+  private bindButtonPress(button: HTMLButtonElement, handler: () => void): void {
+    let lastPressedAt = 0;
+    const press = (): void => {
+      if (button.disabled) {
+        return;
+      }
+      const now = performance.now();
+      if (now - lastPressedAt < 140) {
+        return;
+      }
+      lastPressedAt = now;
+      handler();
+    };
+
+    button.addEventListener('click', () => press());
+    button.addEventListener(
+      'touchend',
+      (event) => {
+        event.preventDefault();
+        press();
+      },
+      { passive: false },
+    );
   }
 
   private syncMusicState(): void {

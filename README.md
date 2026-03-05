@@ -20,6 +20,7 @@ npm run build
 ## Deploy Workflow
 
 See [`docs/DEPLOYMENT.md`](/Users/leeahmurray/Desktop/PrismTD/docs/DEPLOYMENT.md) for the safe `feature -> staging -> main` flow, CI checks, and Vercel domain mapping.
+For production releases, use [`docs/RELEASE_CHECKLIST.md`](/Users/leeahmurray/Desktop/PrismTD/docs/RELEASE_CHECKLIST.md).
 
 ## Controls
 

@@ -37,3 +37,8 @@
 - Put staging keys in `Preview` (or branch-specific for `staging` if needed).
 - Put live keys in `Production`.
 - Use only `VITE_*` variables for frontend access.
+
+## Release Hygiene
+
+- Use the PR template for every change.
+- For production releases, follow [`docs/RELEASE_CHECKLIST.md`](/Users/leeahmurray/Desktop/PrismTD/docs/RELEASE_CHECKLIST.md).
