@@ -46,6 +46,14 @@ export interface Projectile {
   alive: boolean;
 }
 
+export interface Beam {
+  id: number;
+  kind: TowerKind;
+  from: Vec2;
+  to: Vec2;
+  remaining: number;
+}
+
 export interface ActiveWave {
   index: number;
   def: WaveDefinition;
@@ -53,6 +61,7 @@ export interface ActiveWave {
   spawnTimer: number;
   doneSpawning: boolean;
   rewardMultiplier: number;
+  spawnedCount: number;
 }
 
 export type BonusType = 'globalDamageBoost' | 'globalRangeBoost' | 'incomeBurst' | 'livesBurst';
@@ -85,6 +94,7 @@ export interface GameSnapshot {
   enemies: Enemy[];
   towers: Tower[];
   projectiles: Projectile[];
+  beams: Beam[];
   bonusOrb: BonusOrb | null;
   toasts: Toast[];
   waveNumber: number;

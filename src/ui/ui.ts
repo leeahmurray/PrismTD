@@ -62,11 +62,19 @@ export class UI {
 
   private startWaveEl: HTMLButtonElement;
 
+  private sendWaveEl: HTMLButtonElement;
+
   private restartEl: HTMLButtonElement;
 
   private musicTitleEl: HTMLSpanElement;
 
   private musicPlayPauseEl: HTMLButtonElement;
+
+  private mobileMusicOpenEl: HTMLButtonElement;
+
+  private musicModalEl: HTMLDivElement;
+
+  private musicModalTrackEl: HTMLSpanElement;
 
   private autoWaveEl: HTMLButtonElement;
 
@@ -75,6 +83,14 @@ export class UI {
   private buildButtons: Record<TowerKind, HTMLButtonElement>;
 
   private selectedPanel: HTMLDivElement;
+
+  private mobileActionsEl: HTMLDivElement;
+
+  private mobileUpgradeEl: HTMLButtonElement;
+
+  private mobileSellEl: HTMLButtonElement;
+
+  private mobileTargetEl: HTMLButtonElement;
 
   private toastsEl: HTMLDivElement;
 
@@ -193,14 +209,12 @@ export class UI {
     this.startWaveEl = document.createElement('button');
     this.startWaveEl.className = 'wave-btn wave-start-btn';
     this.startWaveEl.textContent = 'Start';
-    this.startWaveEl.dataset.mode = 'start';
-    this.bindButtonPress(this.startWaveEl, () => {
-      if (this.startWaveEl.dataset.mode === 'send') {
-        this.actions.onQueueWave();
-      } else {
-        this.actions.onStartWave();
-      }
-    });
+    this.bindButtonPress(this.startWaveEl, () => this.actions.onStartWave());
+
+    this.sendWaveEl = document.createElement('button');
+    this.sendWaveEl.className = 'wave-btn wave-send-btn';
+    this.sendWaveEl.textContent = 'Send';
+    this.bindButtonPress(this.sendWaveEl, () => this.actions.onQueueWave());
 
     this.autoWaveEl = document.createElement('button');
     this.autoWaveEl.className = 'wave-btn auto-toggle-btn';
@@ -221,7 +235,7 @@ export class UI {
 
     const waveControls = document.createElement('div');
     waveControls.className = 'wave-controls';
-    waveControls.append(this.startWaveEl, this.autoWaveEl, waveBars, this.speedEl, this.pauseEl, this.restartEl);
+    waveControls.append(this.startWaveEl, this.sendWaveEl, waveBars, this.autoWaveEl, this.speedEl, this.pauseEl, this.restartEl);
 
     const musicControl = document.createElement('div');
     musicControl.className = 'music-control';
@@ -269,11 +283,96 @@ export class UI {
       this.syncMusicState();
     });
 
-    musicControl.append(musicNote, musicPrevEl, this.musicTitleEl, this.musicPlayPauseEl, musicStopEl, musicNextEl);
+    this.mobileMusicOpenEl = document.createElement('button');
+    this.mobileMusicOpenEl.className = 'mobile-music-open';
+    this.mobileMusicOpenEl.textContent = '♫';
+    this.mobileMusicOpenEl.title = 'Open Music Controls';
+    this.mobileMusicOpenEl.setAttribute('aria-label', 'Open music controls');
+    this.bindButtonPress(this.mobileMusicOpenEl, () => {
+      this.syncMusicState();
+      this.musicModalEl.classList.remove('hidden');
+    });
+
+    this.musicModalEl = document.createElement('div');
+    this.musicModalEl.className = 'music-modal hidden';
+    this.musicModalEl.innerHTML = `
+      <div class="music-modal-card">
+        <div class="music-modal-header">
+          <strong>Now Playing</strong>
+          <button type="button" id="music-modal-close" class="music-modal-close" aria-label="Close music controls">✕</button>
+        </div>
+        <div class="music-modal-track-row"><span id="music-modal-track"></span></div>
+        <div class="music-modal-player">
+          <button type="button" id="music-modal-prev" class="music-modal-btn icon" aria-label="Previous track"><<</button>
+          <button type="button" id="music-modal-play" class="music-modal-btn icon play" aria-label="Play or pause">||</button>
+          <button type="button" id="music-modal-next" class="music-modal-btn icon" aria-label="Next track">>></button>
+        </div>
+      </div>
+    `;
+
+    this.musicModalTrackEl = this.musicModalEl.querySelector<HTMLSpanElement>('#music-modal-track')!;
+    const closeMusicModal = (): void => this.musicModalEl.classList.add('hidden');
+
+    const modalCloseBtn = this.musicModalEl.querySelector<HTMLButtonElement>('#music-modal-close');
+    if (modalCloseBtn) {
+      this.bindButtonPress(modalCloseBtn, closeMusicModal);
+    }
+
+    const modalPrevBtn = this.musicModalEl.querySelector<HTMLButtonElement>('#music-modal-prev');
+    if (modalPrevBtn) {
+      this.bindButtonPress(modalPrevBtn, () => {
+        this.actions.onMusicPrev();
+        this.syncMusicState();
+      });
+    }
+
+    const modalPlayBtn = this.musicModalEl.querySelector<HTMLButtonElement>('#music-modal-play');
+    if (modalPlayBtn) {
+      this.bindButtonPress(modalPlayBtn, () => {
+        this.actions.onToggleMusicPlayPause();
+        this.syncMusicState();
+      });
+    }
+
+    const modalNextBtn = this.musicModalEl.querySelector<HTMLButtonElement>('#music-modal-next');
+    if (modalNextBtn) {
+      this.bindButtonPress(modalNextBtn, () => {
+        this.actions.onMusicNext();
+        this.syncMusicState();
+      });
+    }
+
+    this.musicModalEl.addEventListener('click', (event) => {
+      if (event.target === this.musicModalEl) {
+        closeMusicModal();
+      }
+    });
+
+    musicControl.append(musicNote, musicPrevEl, this.musicTitleEl, this.musicPlayPauseEl, musicStopEl, musicNextEl, this.mobileMusicOpenEl);
 
     const utilityRow = document.createElement('div');
     utilityRow.className = 'status-utility-row';
     utilityRow.append(modeControl, mapControl, waveControls, musicControl);
+
+    this.mobileActionsEl = document.createElement('div');
+    this.mobileActionsEl.className = 'mobile-tower-actions hidden';
+
+    this.mobileUpgradeEl = document.createElement('button');
+    this.mobileUpgradeEl.className = 'mobile-action-btn upgrade';
+    this.mobileUpgradeEl.textContent = 'Upgrade';
+    this.bindButtonPress(this.mobileUpgradeEl, () => this.actions.onUpgradeTower());
+
+    this.mobileSellEl = document.createElement('button');
+    this.mobileSellEl.className = 'mobile-action-btn sell';
+    this.mobileSellEl.textContent = 'Sell';
+    this.bindButtonPress(this.mobileSellEl, () => this.actions.onSellTower());
+
+    this.mobileTargetEl = document.createElement('button');
+    this.mobileTargetEl.className = 'mobile-action-btn target';
+    this.mobileTargetEl.textContent = 'Target';
+    this.bindButtonPress(this.mobileTargetEl, () => this.actions.onToggleTargeting());
+
+    this.mobileActionsEl.append(this.mobileUpgradeEl, this.mobileSellEl, this.mobileTargetEl);
 
     const statusLayout = document.createElement('div');
     statusLayout.className = 'status-layout';
@@ -284,7 +383,7 @@ export class UI {
     headerTop.className = 'header-top';
     headerTop.append(logoCard, statusCard);
 
-    this.headerRoot.append(headerTop, utilityRow);
+    this.headerRoot.append(headerTop, utilityRow, this.mobileActionsEl, this.musicModalEl);
 
     const buildPanel = document.createElement('div');
     buildPanel.className = 'panel build-panel';
@@ -293,14 +392,16 @@ export class UI {
     const pulseButton = this.createBuildButton('pulse');
     const novaButton = this.createBuildButton('nova');
     const frostButton = this.createBuildButton('frost');
+    const chainButton = this.createBuildButton('chain');
 
     this.buildButtons = {
       pulse: pulseButton,
       nova: novaButton,
       frost: frostButton,
+      chain: chainButton,
     };
 
-    buildPanel.append(pulseButton, novaButton, frostButton);
+    buildPanel.append(pulseButton, novaButton, frostButton, chainButton);
 
     this.selectedPanel = document.createElement('div');
     this.selectedPanel.className = 'panel selected-panel';
@@ -363,19 +464,8 @@ export class UI {
       : `${Math.min(snapshot.waveNumber, snapshot.totalWaves)}/${snapshot.totalWaves}`;
     this.bonusEl.textContent = `${snapshot.bonusCredits}`;
 
-    if (snapshot.waveInProgress) {
-      this.startWaveEl.dataset.mode = 'send';
-      this.startWaveEl.textContent = 'Send';
-      this.startWaveEl.disabled = !snapshot.canQueueWave;
-      this.startWaveEl.classList.remove('start-mode');
-      this.startWaveEl.classList.add('send-mode');
-    } else {
-      this.startWaveEl.dataset.mode = 'start';
-      this.startWaveEl.textContent = 'Start';
-      this.startWaveEl.disabled = !snapshot.canStartWave;
-      this.startWaveEl.classList.add('start-mode');
-      this.startWaveEl.classList.remove('send-mode');
-    }
+    this.startWaveEl.disabled = !snapshot.canStartWave;
+    this.sendWaveEl.disabled = !snapshot.canQueueWave;
 
     this.autoWaveEl.classList.toggle('on', snapshot.autoWaveEnabled);
     this.autoWaveEl.setAttribute('aria-pressed', snapshot.autoWaveEnabled ? 'true' : 'false');
@@ -385,8 +475,10 @@ export class UI {
     });
 
     this.speedEl.textContent = `${snapshot.speed}x`;
-    this.pauseEl.textContent = snapshot.paused ? '▶' : '⏸';
+    const mobileLayout = window.matchMedia('(max-width: 960px)').matches;
+    this.pauseEl.textContent = mobileLayout ? (snapshot.paused ? 'RESUME' : 'PAUSE') : (snapshot.paused ? '▶' : '⏸');
     this.pauseEl.title = snapshot.paused ? 'Resume' : 'Pause';
+    this.restartEl.textContent = mobileLayout ? 'RESTART' : '↻';
 
     for (const kind of Object.keys(this.buildButtons) as TowerKind[]) {
       const button = this.buildButtons[kind];
@@ -397,6 +489,7 @@ export class UI {
 
     this.syncMusicState();
     this.renderSelected(snapshot, game);
+    this.renderMobileActions(snapshot, game);
     this.renderToasts(snapshot);
   }
 
@@ -417,9 +510,7 @@ export class UI {
     button.className = `build-btn tower-btn ${kind}`;
     button.title = BALANCE.towers.stats[kind].name;
     button.innerHTML = `<span class="tower-glyph ${kind}"></span><span class="tower-cost">$${cost}</span>`;
-    button.addEventListener('click', () => {
-      this.actions.onBuildSelect(kind);
-    });
+    this.bindButtonPress(button, () => this.actions.onBuildSelect(kind));
 
     return button;
   }
@@ -454,6 +545,11 @@ export class UI {
     this.musicTitleEl.textContent = state.currentTrackTitle;
     this.musicPlayPauseEl.textContent = state.isPlaying ? '⏸' : '▶';
     this.musicPlayPauseEl.title = state.isPlaying ? 'Pause' : 'Play';
+    this.musicModalTrackEl.textContent = state.currentTrackTitle;
+    const modalPlayBtn = this.musicModalEl.querySelector<HTMLButtonElement>('#music-modal-play');
+    if (modalPlayBtn) {
+      modalPlayBtn.textContent = state.isPlaying ? '||' : '>';
+    }
   }
 
   private cycleMap(delta: number): void {
@@ -542,15 +638,40 @@ export class UI {
       </div>
     `;
 
-    this.selectedPanel.querySelector<HTMLButtonElement>('#upgrade-btn')?.addEventListener('click', () => {
-      this.actions.onUpgradeTower();
-    });
-    this.selectedPanel.querySelector<HTMLButtonElement>('#sell-btn')?.addEventListener('click', () => {
-      this.actions.onSellTower();
-    });
-    this.selectedPanel.querySelector<HTMLButtonElement>('#targeting-btn')?.addEventListener('click', () => {
-      this.actions.onToggleTargeting();
-    });
+    const upgradeBtn = this.selectedPanel.querySelector<HTMLButtonElement>('#upgrade-btn');
+    if (upgradeBtn) {
+      this.bindButtonPress(upgradeBtn, () => this.actions.onUpgradeTower());
+    }
+    const sellBtn = this.selectedPanel.querySelector<HTMLButtonElement>('#sell-btn');
+    if (sellBtn) {
+      this.bindButtonPress(sellBtn, () => this.actions.onSellTower());
+    }
+    const targetingBtn = this.selectedPanel.querySelector<HTMLButtonElement>('#targeting-btn');
+    if (targetingBtn) {
+      this.bindButtonPress(targetingBtn, () => this.actions.onToggleTargeting());
+    }
+  }
+
+  private renderMobileActions(snapshot: GameSnapshot, game: Game): void {
+    const selectedTower = game.getSelectedTower();
+    if (!selectedTower || snapshot.placingTowerKind) {
+      this.mobileActionsEl.classList.add('hidden');
+      return;
+    }
+
+    const upgradeCost = game.getUpgradeCost(selectedTower.kind, selectedTower.level);
+    const sellValue = Math.floor(game.getTowerInvestedCost(selectedTower) * BALANCE.economy.sellRefundPct);
+    const canUpgrade = selectedTower.level < BALANCE.towers.maxLevel && snapshot.money >= upgradeCost;
+
+    this.mobileUpgradeEl.textContent =
+      selectedTower.level >= BALANCE.towers.maxLevel ? 'Upgrade MAX' : `Upgrade $${upgradeCost}`;
+    this.mobileUpgradeEl.disabled = !canUpgrade;
+    this.mobileSellEl.textContent = `Sell +${sellValue}`;
+    this.mobileSellEl.disabled = false;
+    this.mobileTargetEl.textContent = `Target ${selectedTower.targeting}`;
+    this.mobileTargetEl.disabled = false;
+
+    this.mobileActionsEl.classList.remove('hidden');
   }
 
   private renderToasts(snapshot: GameSnapshot): void {
@@ -615,6 +736,9 @@ export class UI {
     }
     if (kind === 'frost') {
       return `Slow ${(stats.slowPct * 100).toFixed(0)}% for ${stats.slowDuration.toFixed(1)}s`;
+    }
+    if (kind === 'chain') {
+      return '4-target chain beam';
     }
     return 'Direct beam';
   }

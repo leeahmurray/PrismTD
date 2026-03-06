@@ -42,6 +42,19 @@ app.innerHTML = `
       </div>
       <div id="ui-sidebar" class="ui-sidebar"></div>
     </div>
+    <footer class="site-footer">
+      <span>&copy; 2026 PrismTD All Rights Reserved.</span>
+      <span>
+        Built with <span class="site-footer-accent">&#10084;</span> by
+        <a class="site-footer-accent" href="https://burrowbytes.games" target="_blank" rel="noopener noreferrer">BurrowBytes</a>
+        +
+        <a class="site-footer-accent" href="https://leeahmurray.com" target="_blank" rel="noopener noreferrer">Leeah Murray</a>
+      </span>
+      <span>
+        Music credits:
+        <a href="http://www.voltzsupreme.com/" target="_blank" rel="noopener noreferrer">Voltz Supreme</a>
+      </span>
+    </footer>
   </div>
 `;
 
@@ -303,6 +316,7 @@ function setupUiSfx(): {
 }
 
 const uiSfx = setupUiSfx();
+const isCoarsePointerDevice = window.matchMedia('(pointer: coarse)').matches;
 
 const ui = new UI(headerRoot, sidebarRoot, {
   onBuildSelect: (kind) => {
@@ -416,36 +430,48 @@ app.addEventListener(
   true,
 );
 
-function toWorldPosition(event: MouseEvent): Vec2 {
+function toWorldPositionFromClient(clientX: number, clientY: number): Vec2 {
   const rect = gameCanvas.getBoundingClientRect();
   const scaleX = gameCanvas.width / rect.width;
   const scaleY = gameCanvas.height / rect.height;
 
   return {
-    x: (event.clientX - rect.left) * scaleX,
-    y: (event.clientY - rect.top) * scaleY,
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY,
   };
 }
 
 gameCanvas.addEventListener('mousemove', (event) => {
-  game.setMouseWorld(toWorldPosition(event));
+  game.setMouseWorld(toWorldPositionFromClient(event.clientX, event.clientY));
 });
 
 gameCanvas.addEventListener('mouseleave', () => {
   game.setMouseWorld(null);
 });
 
-gameCanvas.addEventListener('click', (event) => {
+const handleCanvasTap = (worldPos: Vec2): void => {
   const before = game.getSnapshot();
   if (before.victory || before.gameOver) {
     game.restart();
     return;
   }
-  const placed = game.onCanvasClick(toWorldPosition(event));
+  const placed = game.onCanvasClick(worldPos);
   const after = game.getSnapshot();
   if (before.bonusOrb && !after.bonusOrb) {
     uiSfx.playPowerupClaimed();
   }
+
+  if (isCoarsePointerDevice && before.placingTowerKind) {
+    if (placed) {
+      // Mobile flow: successful place exits placement mode.
+      game.onCanvasRightClick();
+    } else {
+      // Try selecting a tower on the same tap; do not keep placement active.
+      game.onCanvasRightClick();
+      game.onCanvasClick(worldPos);
+    }
+  }
+
   if (placed) {
     uiSfx.playPlace();
     return;
@@ -457,7 +483,30 @@ gameCanvas.addEventListener('click', (event) => {
       uiSfx.playInsufficient();
     }
   }
+};
+
+let lastCanvasTouchTapAt = 0;
+
+gameCanvas.addEventListener('click', (event) => {
+  if (performance.now() - lastCanvasTouchTapAt < 500) {
+    return;
+  }
+  handleCanvasTap(toWorldPositionFromClient(event.clientX, event.clientY));
 });
+
+gameCanvas.addEventListener(
+  'touchend',
+  (event) => {
+    event.preventDefault();
+    const touch = event.changedTouches[0];
+    if (!touch) {
+      return;
+    }
+    lastCanvasTouchTapAt = performance.now();
+    handleCanvasTap(toWorldPositionFromClient(touch.clientX, touch.clientY));
+  },
+  { passive: false },
+);
 
 gameCanvas.addEventListener('contextmenu', (event) => {
   event.preventDefault();

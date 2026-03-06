@@ -70,7 +70,25 @@ export function pathCellsFromPoints(points: readonly Vec2[], gridSize: number): 
 
 export function pointAtDistance(path: PathData, distance: number): Vec2 {
   if (distance <= 0) {
-    return path.points[0];
+    const start = path.points[0];
+    const next = path.points[1];
+    if (!next) {
+      return start;
+    }
+
+    const dx = next.x - start.x;
+    const dy = next.y - start.y;
+    const length = Math.hypot(dx, dy);
+    if (length <= 0) {
+      return start;
+    }
+
+    const ux = dx / length;
+    const uy = dy / length;
+    return {
+      x: start.x + ux * distance,
+      y: start.y + uy * distance,
+    };
   }
   if (distance >= path.totalLength) {
     return path.points[path.points.length - 1];
