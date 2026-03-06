@@ -13,6 +13,7 @@ const COLORS = {
   pulse: '#00E5FF',
   nova: '#FF7A00',
   frost: '#9A6BFF',
+  chain: '#5FE6FF',
   enemyRunner: '#00F0FF',
   enemyTank: '#FF2F92',
   enemySwarm: '#FFD400',
@@ -29,6 +30,7 @@ const COLORS = {
 function towerColor(kind: TowerKind): string {
   if (kind === 'pulse') return COLORS.pulse;
   if (kind === 'nova') return COLORS.nova;
+  if (kind === 'chain') return COLORS.chain;
   return COLORS.frost;
 }
 
@@ -281,15 +283,29 @@ function drawTower(
     ctx.moveTo(x - 4, y);
     ctx.lineTo(x + 12, y);
     glowStroke(ctx, color, 2, 0.9, 8);
+  } else if (kind === 'chain') {
+    ctx.beginPath();
+    ctx.moveTo(x - 11, y);
+    ctx.lineTo(x - 2, y);
+    ctx.lineTo(x - 7, y - 5);
+    ctx.moveTo(x - 2, y);
+    ctx.lineTo(x + 7, y);
+    ctx.lineTo(x + 2, y + 5);
+    glowStroke(ctx, color, 2, 1, 10);
+
+    ctx.beginPath();
+    ctx.arc(x + 9, y, 3.2, 0, Math.PI * 2);
+    glowFill(ctx, color, 0.72, 10);
   } else {
     ctx.beginPath();
-    ctx.moveTo(x, y - 11);
-    ctx.lineTo(x + 9, y + 6);
-    ctx.lineTo(x - 9, y + 6);
+    ctx.moveTo(x, y - 10);
+    ctx.lineTo(x + 8, y);
+    ctx.lineTo(x, y + 10);
+    ctx.lineTo(x - 8, y);
     ctx.closePath();
     glowStroke(ctx, color, 2, 1, 10);
     ctx.beginPath();
-    ctx.arc(x, y + 1, 3.5, 0, Math.PI * 2);
+    ctx.arc(x, y, 2.8, 0, Math.PI * 2);
     glowFill(ctx, color, 0.65, 8);
   }
 
@@ -345,6 +361,15 @@ export function render(
     ctx.beginPath();
     ctx.arc(projectile.x, projectile.y, projectile.kind === 'nova' ? 4 : 3, 0, Math.PI * 2);
     glowFill(ctx, color, 0.85, 10);
+  }
+
+  for (const beam of snapshot.beams) {
+    const alpha = Math.min(1, Math.max(0, beam.remaining / 0.09));
+    const color = towerColor(beam.kind);
+    ctx.beginPath();
+    ctx.moveTo(beam.from.x, beam.from.y);
+    ctx.lineTo(beam.to.x, beam.to.y);
+    glowStroke(ctx, color, beam.kind === 'chain' ? 2.2 : 1.6, 0.8 * alpha, 10);
   }
 
   if (snapshot.placingTowerKind && snapshot.placementPos) {

@@ -2,6 +2,7 @@ import { BALANCE, type EnemyKind, type GameMode, type TowerKind, type WaveDefini
 import { cellKey, createPath, pathCellsFromPoints, pointAtDistance, type PathData } from './path';
 import type {
   ActiveWave,
+  Beam,
   BonusOrb,
   BonusType,
   Enemy,
@@ -14,6 +15,11 @@ import type {
 
 const BONUS_ORB_RADIUS = 14;
 const EARLY_WAVE_REWARD_MULTIPLIER = 1.05;
+const SPAWN_STAGGER_DISTANCE = BALANCE.map.gridSizePx * 0.28;
+const CHAIN_MAX_TARGETS = 4;
+const CHAIN_JUMP_RANGE = 102;
+const CHAIN_DAMAGE_FALLOFF = 0.64;
+const BEAM_LIFETIME = 0.09;
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -40,6 +46,8 @@ export class Game {
   private towers: Tower[] = [];
 
   private projectiles: Projectile[] = [];
+
+  private beams: Beam[] = [];
 
   private bonusOrb: BonusOrb | null = null;
 
@@ -92,6 +100,7 @@ export class Game {
     tower: 1,
     projectile: 1,
     toast: 1,
+    beam: 1,
   };
 
   constructor() {
@@ -105,6 +114,7 @@ export class Game {
     this.enemies = [];
     this.towers = [];
     this.projectiles = [];
+    this.beams = [];
     this.bonusOrb = null;
     this.toasts = [];
     this.money = this.getModeStartMoney();
@@ -128,7 +138,7 @@ export class Game {
     this.autoWaveEnabled = false;
     this.autoWaveCountdown = 0;
     this.kamikazeStarted = false;
-    this.idCounters = { enemy: 1, tower: 1, projectile: 1, toast: 1 };
+    this.idCounters = { enemy: 1, tower: 1, projectile: 1, toast: 1, beam: 1 };
   }
 
   getSnapshot(): GameSnapshot {
@@ -148,6 +158,7 @@ export class Game {
       enemies: this.enemies,
       towers: this.towers,
       projectiles: this.projectiles,
+      beams: this.beams,
       bonusOrb: this.bonusOrb,
       toasts: this.toasts,
       waveNumber: this.isEndlessMode() ? this.completedWaveCount + 1 : Math.min(this.completedWaveCount + 1, BALANCE.waves.length),
@@ -208,6 +219,7 @@ export class Game {
     this.updateEnemies(scaledDt);
     this.updateTowers(scaledDt);
     this.updateProjectiles(scaledDt);
+    this.updateBeams(scaledDt);
     this.updateBonusOrb(scaledDt);
 
     this.checkWaveCompletion();
@@ -473,7 +485,8 @@ export class Game {
 
       while (wave.spawnTimer <= 0 && wave.queue.length > 0) {
         const kind = wave.queue.shift()!;
-        this.spawnEnemy(kind, wave.index);
+        this.spawnEnemy(kind, wave.index, wave.spawnedCount);
+        wave.spawnedCount += 1;
         wave.spawnTimer += wave.def.spawnInterval;
       }
 
@@ -483,8 +496,8 @@ export class Game {
     }
   }
 
-  private spawnEnemy(kind: EnemyKind, waveIndex: number): void {
-    this.enemies.push(this.createEnemy(kind, waveIndex, 0));
+  private spawnEnemy(kind: EnemyKind, waveIndex: number, spawnOrder: number): void {
+    this.enemies.push(this.createEnemy(kind, waveIndex, -spawnOrder * SPAWN_STAGGER_DISTANCE));
   }
 
   private createEnemy(kind: EnemyKind, waveIndex: number, distance: number): Enemy {
@@ -496,7 +509,7 @@ export class Game {
       id: this.idCounters.enemy++,
       kind,
       waveIndex,
-      distance: Math.max(0, distance),
+      distance,
       hp: Math.round(base.hp * hpScale),
       maxHp: Math.round(base.hp * hpScale),
       speed: base.speed * speedScale,
@@ -570,7 +583,10 @@ export class Game {
       const targetPos = enemyPositions.get(target.id)!;
 
       if (tower.kind === 'pulse') {
+        this.spawnBeam({ x: tower.x, y: tower.y }, targetPos, 'pulse');
         this.applyHit(target, stats.damage, 0, 0, 0, targetPos);
+      } else if (tower.kind === 'chain') {
+        this.applyChainStrike(tower, target, targetPos, stats.damage, enemyPositions);
       } else {
         this.projectiles.push({
           id: this.idCounters.projectile++,
@@ -635,6 +651,98 @@ export class Game {
     }
 
     this.projectiles = this.projectiles.filter((p) => p.alive);
+  }
+
+  private updateBeams(dt: number): void {
+    if (this.beams.length === 0) {
+      return;
+    }
+
+    for (const beam of this.beams) {
+      beam.remaining -= dt;
+    }
+
+    this.beams = this.beams.filter((beam) => beam.remaining > 0);
+  }
+
+  private applyChainStrike(
+    tower: Tower,
+    initialTarget: Enemy,
+    initialPos: Vec2,
+    baseDamage: number,
+    enemyPositions: Map<number, Vec2>,
+  ): void {
+    const hitIds = new Set<number>();
+    let currentTarget: Enemy | null = initialTarget;
+    let currentPos: Vec2 = initialPos;
+    let fromPos: Vec2 = { x: tower.x, y: tower.y };
+    let currentDamage = baseDamage;
+
+    for (let i = 0; i < CHAIN_MAX_TARGETS; i += 1) {
+      if (!currentTarget || !currentTarget.alive || hitIds.has(currentTarget.id)) {
+        break;
+      }
+
+      this.spawnBeam(fromPos, currentPos, 'chain');
+      this.applyDamage(currentTarget, currentDamage);
+      hitIds.add(currentTarget.id);
+
+      currentDamage *= CHAIN_DAMAGE_FALLOFF;
+      if (i >= CHAIN_MAX_TARGETS - 1) {
+        break;
+      }
+
+      const next = this.findClosestChainTarget(currentPos, hitIds, enemyPositions);
+      if (!next) {
+        break;
+      }
+
+      fromPos = currentPos;
+      currentTarget = next.enemy;
+      currentPos = next.pos;
+    }
+  }
+
+  private findClosestChainTarget(
+    fromPos: Vec2,
+    hitIds: Set<number>,
+    enemyPositions: Map<number, Vec2>,
+  ): { enemy: Enemy; pos: Vec2 } | null {
+    let selected: Enemy | null = null;
+    let selectedPos: Vec2 | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const enemy of this.enemies) {
+      if (!enemy.alive || hitIds.has(enemy.id)) {
+        continue;
+      }
+
+      const pos = enemyPositions.get(enemy.id) ?? pointAtDistance(this.path, enemy.distance);
+      const distance = Math.hypot(pos.x - fromPos.x, pos.y - fromPos.y);
+      if (distance > CHAIN_JUMP_RANGE || distance >= bestDistance) {
+        continue;
+      }
+
+      selected = enemy;
+      selectedPos = pos;
+      bestDistance = distance;
+    }
+
+    if (!selected || !selectedPos) {
+      return null;
+    }
+
+    return { enemy: selected, pos: selectedPos };
+  }
+
+  private spawnBeam(from: Vec2, to: Vec2, kind: TowerKind): void {
+    this.beams.push({
+      id: this.idCounters.beam++,
+      kind,
+      from: { x: from.x, y: from.y },
+      to: { x: to.x, y: to.y },
+      remaining: BEAM_LIFETIME,
+    });
   }
 
   private applyHit(
@@ -869,6 +977,7 @@ export class Game {
       spawnTimer: 0,
       doneSpawning: false,
       rewardMultiplier: earlySend ? EARLY_WAVE_REWARD_MULTIPLIER : 1,
+      spawnedCount: 0,
     });
 
     this.nextWaveIndex += 1;

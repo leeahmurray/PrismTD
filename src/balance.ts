@@ -1,4 +1,4 @@
-export type TowerKind = 'pulse' | 'nova' | 'frost';
+export type TowerKind = 'pulse' | 'nova' | 'frost' | 'chain';
 export type EnemyKind = 'runner' | 'tank' | 'swarm' | 'blossom' | 'petal';
 export type GameMode = 'standard' | 'infinite' | 'kamikaze';
 
@@ -206,6 +206,7 @@ export const BALANCE = {
       pulse: [1.0, 1.04, 1.08, 1.12, 1.16, 1.2, 1.25, 1.3, 1.36, 1.42],
       nova: [1.0, 1.03, 1.06, 1.09, 1.12, 1.15, 1.18, 1.22, 1.26, 1.3],
       frost: [1.0, 1.02, 1.04, 1.06, 1.08, 1.1, 1.12, 1.14, 1.16, 1.18],
+      chain: [1.0, 1.03, 1.06, 1.09, 1.12, 1.15, 1.18, 1.22, 1.26, 1.3],
     },
     stats: {
       pulse: {
@@ -240,6 +241,17 @@ export const BALANCE = {
         slowPct: 0.45,
         slowDuration: 1,
         projectileSpeed: 320,
+      },
+      chain: {
+        name: 'Prism Link',
+        cost: 145,
+        range: 118,
+        fireRate: 1.25,
+        damage: 11,
+        splashRadius: 0,
+        slowPct: 0,
+        slowDuration: 0,
+        projectileSpeed: 0,
       },
     },
   },

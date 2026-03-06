@@ -15,6 +15,7 @@
   --tower-pulse: #00e5ff;
   --tower-nova: #ff7a00;
   --tower-frost: #9a6bff;
+  --tower-chain: #5fe6ff;
 
   --disabled: #2a2f3a;
   --text-main: #d9f1ff;
@@ -53,6 +54,46 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.site-footer {
+  margin-top: 2px;
+  padding: 8px 10px 2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+  color: #a8c6e8;
+  font-size: 0.84rem;
+  letter-spacing: 0.015em;
+  text-align: center;
+}
+
+.site-footer a {
+  color: #d9f1ff;
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 0;
+}
+
+.site-footer a:hover {
+  color: var(--wave-cyan);
+  border-bottom: 0;
+}
+
+.site-footer-accent {
+  color: #ff4fb8;
+  font-weight: 700;
+}
+
+.site-footer a.site-footer-accent {
+  border-bottom: 0;
+}
+
+.site-footer a.site-footer-accent:hover {
+  color: var(--wave-cyan);
+  border-bottom: 0;
 }
 
 .galaxy-bg {
@@ -179,6 +220,7 @@ body {
 }
 
 .site-menu-bar {
+  display: none;
   width: 100vw;
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
@@ -317,7 +359,7 @@ body {
 
 .status-card {
   background: transparent;
-  padding: 0 8px;
+  padding: 18px 8px 0;
   border: 0;
   box-shadow: none;
   display: flex;
@@ -457,7 +499,7 @@ body {
   background: rgba(30, 44, 68, 0.82);
   box-shadow: inset 0 0 0 1px rgba(65, 132, 214, 0.32);
   display: grid;
-  grid-template-columns: max-content max-content max-content max-content max-content max-content;
+  grid-template-columns: repeat(7, max-content);
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -540,7 +582,7 @@ body {
   text-shadow: none;
 }
 
-.wave-start-btn.send-mode {
+.wave-send-btn {
   color: #00e5ff;
   text-shadow: 0 0 10px rgba(0, 229, 255, 0.52);
 }
@@ -648,6 +690,130 @@ body {
   color: #d9f1ff;
 }
 
+.mobile-music-open {
+  display: none;
+  border: 0;
+  background: transparent;
+  color: #9ad9ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  width: auto;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  box-shadow: none;
+}
+
+.mobile-music-open:hover:not(:disabled) {
+  border: 0;
+  box-shadow: none;
+  color: #d9f1ff;
+}
+
+.music-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 8, 18, 0.68);
+}
+
+.music-modal.hidden {
+  display: none;
+}
+
+.music-modal-card {
+  width: min(94vw, 460px);
+  background: linear-gradient(180deg, rgba(18, 24, 40, 0.96), rgba(10, 16, 30, 0.97));
+  border: 1px solid rgba(42, 169, 255, 0.76);
+  box-shadow: 0 0 18px rgba(42, 169, 255, 0.3);
+  padding: 16px;
+}
+
+.music-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.music-modal-header strong {
+  font-size: 1.08rem;
+  color: #d8f3ff;
+}
+
+.music-modal-close {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+  border-color: rgba(42, 169, 255, 0.72);
+}
+
+.music-modal-track-row {
+  margin-top: 10px;
+  color: #dff3ff;
+  font-weight: 700;
+  font-size: 1.8rem;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.music-modal-player {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.music-modal-btn {
+  min-height: 62px;
+  font-weight: 700;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #ffffff;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 0;
+}
+
+.music-modal-btn.icon {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  font-size: 1.55rem;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: #ffffff;
+  font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+}
+
+.music-modal-btn.icon:hover:not(:disabled) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #ffffff;
+  opacity: 0.92;
+}
+
+.music-modal-btn.play {
+  font-size: 2.05rem;
+  letter-spacing: -0.08em;
+}
+
 .hud-table {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -735,7 +901,7 @@ button:disabled {
 
 .build-panel {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -757,14 +923,14 @@ button:disabled {
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  min-height: 54px;
-  gap: 6px;
-  padding: 6px 4px;
+  min-height: 74px;
+  gap: 8px;
+  padding: 10px 6px;
 }
 
 .tower-glyph {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   display: inline-block;
 }
 
@@ -785,9 +951,40 @@ button:disabled {
   box-shadow: 0 0 8px rgba(154, 107, 255, 0.4);
 }
 
+.tower-glyph.chain {
+  width: 22px;
+  height: 16px;
+  position: relative;
+}
+
+.tower-glyph.chain::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 6px;
+  top: 7px;
+  height: 2px;
+  background: var(--tower-chain);
+  box-shadow: 0 0 8px rgba(95, 230, 255, 0.5);
+}
+
+.tower-glyph.chain::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 2px solid var(--tower-chain);
+  box-shadow: 0 0 8px rgba(95, 230, 255, 0.45);
+}
+
 .tower-cost {
   color: var(--money-yellow);
   font-weight: 700;
+  font-size: 1.12rem;
+  line-height: 1;
 }
 
 .selected-panel {
@@ -934,6 +1131,14 @@ button:disabled {
   box-shadow: 0 0 10px rgba(83, 255, 87, 0.2);
 }
 
+.mobile-tower-actions {
+  display: none;
+}
+
+.mobile-tower-actions.hidden {
+  display: none;
+}
+
 @media (max-width: 1280px) {
   .game-layout {
     grid-template-columns: 1fr;
@@ -953,24 +1158,25 @@ button:disabled {
     gap: 0;
   }
 
+  .status-card {
+    padding-top: 0;
+  }
+
   .status-utility-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .hud-table {
-    grid-template-columns: 1fr;
+    width: 360px;
+    max-width: 100%;
   }
 
   .hud-cell {
+    border-right: 1px solid rgba(91, 167, 255, 0.3);
+  }
+
+  .hud-cell:nth-child(2n) {
     border-right: 0;
-  }
-
-  .hud-cell:nth-child(n + 5) {
-    border-bottom: 1px solid rgba(91, 167, 255, 0.3);
-  }
-
-  .hud-cell:last-child {
-    border-bottom: 0;
   }
 
   .canvas-shell {
@@ -979,5 +1185,251 @@ button:disabled {
 
   #game-canvas {
     width: 100%;
+  }
+}
+
+@media (max-width: 960px) {
+  #app {
+    padding: 0 10px 12px;
+  }
+
+  .app-shell {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .status-utility-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .mode-control,
+  .map-control {
+    flex: 1 1 calc(50% - 3px);
+    width: auto;
+    justify-content: space-between;
+  }
+
+  .wave-controls {
+    flex: 1 1 calc(100% - 58px);
+    min-width: 0;
+  }
+
+  .music-control {
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+  }
+
+  .wave-controls {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 4px;
+    min-height: 34px;
+    height: 34px;
+    padding: 4px 8px;
+    overflow: hidden;
+  }
+
+  .wave-controls .status-mini-btn.icon-only {
+    min-width: 0;
+    width: auto;
+    height: 24px;
+    padding: 0 6px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+
+  .wave-start-btn,
+  .auto-toggle-btn,
+  .wave-bars,
+  .wave-controls .utility-btn.speed-square {
+    margin-right: 0;
+  }
+
+  .wave-controls .utility-btn.speed-square {
+    width: 44px;
+    min-width: 44px;
+  }
+
+  .ui-sidebar {
+    gap: 8px;
+  }
+
+  .build-panel {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .tower-btn {
+    min-height: 64px;
+    gap: 6px;
+    padding: 8px 4px;
+  }
+
+  .tower-glyph {
+    width: 20px;
+    height: 20px;
+  }
+
+  .tower-glyph.chain {
+    width: 20px;
+    height: 16px;
+  }
+
+  .tower-cost {
+    font-size: 1.02rem;
+  }
+
+  .selected-panel {
+    min-height: 0;
+  }
+
+  .logo-card {
+    justify-content: center;
+    padding-top: 5px;
+  }
+
+  .mobile-tower-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 6px;
+    padding: 6px;
+    border: 1px solid rgba(42, 76, 127, 0.8);
+    background: rgba(12, 18, 32, 0.86);
+    box-shadow: 0 0 10px rgba(42, 169, 255, 0.16);
+  }
+
+  .mobile-tower-actions.hidden {
+    display: none;
+  }
+
+  .mobile-action-btn {
+    min-height: 34px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    padding: 0 8px;
+    line-height: 1;
+  }
+
+  .mobile-action-btn.upgrade {
+    border-color: rgba(166, 255, 0, 0.72);
+  }
+
+  .mobile-action-btn.sell {
+    border-color: rgba(255, 201, 71, 0.72);
+  }
+
+  .mobile-action-btn.target {
+    border-color: rgba(42, 169, 255, 0.72);
+  }
+
+  .music-control {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .music-note,
+  .music-track-label,
+  .music-nav-btn {
+    display: none;
+  }
+
+  .mobile-music-open {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-height: 34px;
+    padding: 0;
+    font-size: 0.92rem;
+    font-weight: 700;
+  }
+
+  .hud-table {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding-inline: 6px;
+  }
+
+  .hud-cell {
+    min-height: 30px;
+    padding: 4px 10px;
+    justify-content: flex-start;
+    gap: 6px;
+    border-right: 1px solid rgba(91, 167, 255, 0.3);
+  }
+
+  .hud-cell:nth-child(2n) {
+    border-right: 1px solid rgba(91, 167, 255, 0.3);
+  }
+
+  .hud-cell:nth-child(3n) {
+    border-right: 0;
+  }
+
+  .hud-cell:nth-child(n + 4) {
+    border-bottom: 0;
+  }
+
+  .hud-label {
+    font-size: 0.7rem;
+  }
+
+  .hud-value {
+    font-size: 0.84rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .logo-image {
+    width: min(240px, 100%);
+  }
+
+  .hud-table {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .hud-cell {
+    min-height: 28px;
+    padding: 4px 8px;
+  }
+
+  .wave-btn {
+    font-size: 0.72rem;
+  }
+
+  .music-track-label {
+    font-size: 0.76rem;
+  }
+
+  .site-footer {
+    font-size: 0.74rem;
+    gap: 4px 8px;
+    padding-top: 6px;
+  }
+}
+
+@media (max-width: 380px) {
+  .status-utility-row {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'mode'
+      'map'
+      'wave'
+      'music';
+  }
+
+  .mobile-tower-actions {
+    grid-template-columns: 1fr;
   }
 }
