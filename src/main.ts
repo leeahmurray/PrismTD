@@ -1,9 +1,12 @@
 import './style.css';
+import { initAnalytics } from './analytics';
 import { BALANCE } from './balance';
 import { Game } from './game/game';
 import type { Vec2 } from './game/types';
 import { render } from './render/renderer';
 import { UI } from './ui/ui';
+
+initAnalytics();
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) {
