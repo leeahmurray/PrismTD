@@ -1490,6 +1490,10 @@ button:disabled {
   display: none;
 }
 
+.mobile-ability-dock {
+  display: none;
+}
+
 @media (max-width: 1280px) {
   .game-layout {
     grid-template-columns: 1fr;
@@ -1699,6 +1703,48 @@ button:disabled {
 
   .mobile-tower-actions.hidden {
     display: none;
+  }
+
+  .mobile-ability-dock {
+    display: block;
+  }
+
+  .ability-panel.mobile-compact {
+    margin-top: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .ability-panel.mobile-compact > strong {
+    grid-column: 1 / -1;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+  }
+
+  .ability-panel.mobile-compact .ability-btn {
+    min-height: 40px;
+    padding: 6px 7px;
+    gap: 3px;
+  }
+
+  .ability-panel.mobile-compact .ability-name {
+    font-size: 0.76rem;
+  }
+
+  .ability-panel.mobile-compact .ability-desc,
+  .ability-panel.mobile-compact .ability-state {
+    display: none;
+  }
+
+  .ability-panel.mobile-compact .ability-charges {
+    height: 10px;
+    gap: 3px;
+  }
+
+  .ability-panel.mobile-compact .ability-charge-bar {
+    width: 6px;
+    height: 10px;
   }
 
   .mobile-action-btn {
