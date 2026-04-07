@@ -438,7 +438,7 @@ export class UI {
 
     this.abilityPanel = document.createElement('div');
     this.abilityPanel.className = 'panel ability-panel';
-    this.abilityPanel.innerHTML = '<strong>Command Abilities</strong>';
+    this.abilityPanel.innerHTML = '<strong>Power Ups</strong>';
 
     const overclockButton = this.createAbilityButton('overclock');
     const ionBurstButton = this.createAbilityButton('ionBurst');
@@ -890,7 +890,7 @@ export class UI {
     if (mobileLayout) {
       this.abilityPanel.classList.add('mobile-compact');
       this.mobileAbilityDockEl.append(this.abilityPanel);
-      this.sidebarRoot.append(this.selectedPanel, this.buildPanel);
+      this.sidebarRoot.append(this.buildPanel, this.selectedPanel);
       return;
     }
 

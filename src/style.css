@@ -1717,19 +1717,22 @@ button:disabled {
   }
 
   .ability-panel.mobile-compact > strong {
-    grid-column: 1 / -1;
-    font-size: 0.78rem;
-    letter-spacing: 0.04em;
+    display: none;
   }
 
   .ability-panel.mobile-compact .ability-btn {
-    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 38px;
     padding: 6px 7px;
-    gap: 3px;
+    gap: 6px;
   }
 
   .ability-panel.mobile-compact .ability-name {
-    font-size: 0.76rem;
+    font-size: 0.74rem;
+    line-height: 1;
+    white-space: nowrap;
   }
 
   .ability-panel.mobile-compact .ability-desc,
@@ -1740,6 +1743,8 @@ button:disabled {
   .ability-panel.mobile-compact .ability-charges {
     height: 10px;
     gap: 3px;
+    margin-left: auto;
+    flex: 0 0 auto;
   }
 
   .ability-panel.mobile-compact .ability-charge-bar {
