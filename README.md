@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite.
+PrismTD now boots locally at `http://localhost:3005`.
 
 ## Build
 
@@ -31,6 +31,7 @@ For production releases, use [`docs/RELEASE_CHECKLIST.md`](/Users/leeahmurray/De
 - `Speed` toggles 1x/2x simulation speed.
 - `Pause` freezes simulation updates.
 - Select a tower to upgrade, sell, or change targeting (`first` / `closest`).
+- Trigger command abilities from the sidebar when they are ready.
 - Click bonus orbs for random buffs.
 
 ## Gameplay Summary
@@ -41,10 +42,16 @@ For production releases, use [`docs/RELEASE_CHECKLIST.md`](/Users/leeahmurray/De
   - Glint Runner (fast, low HP)
   - Bastion Core (slow, high HP)
   - Shard Swarm (mid stats)
-- Three tower classes:
+- Four tower classes:
   - Pulse Node (rapid single target)
   - Nova Lance (heavy splash)
   - Frost Arc (slow debuff)
+  - Prism Link (chain beam)
+- Three command abilities:
+  - Overclock
+  - Ion Burst
+  - Phase Warp
+- 13 neon map layouts with inline cycling from the HUD
 
 All tunable numbers are centralized in [`src/balance.ts`](/Users/leeahmurray/Desktop/PrismTD/src/balance.ts).
 

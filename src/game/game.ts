@@ -1,13 +1,16 @@
-import { BALANCE, type EnemyKind, type GameMode, type TowerKind, type WaveDefinition } from '../balance';
+import { BALANCE, type AbilityKind, type EnemyKind, type GameMode, type TowerKind, type WaveDefinition } from '../balance';
+import { getAvailableMaps, type MapDefinition } from './maps';
 import { cellKey, createPath, pathCellsFromPoints, pointAtDistance, type PathData } from './path';
 import type {
   ActiveWave,
+  AbilitySnapshot,
   Beam,
   BonusOrb,
   BonusType,
   Enemy,
   GameSnapshot,
   Projectile,
+  SupportPreviewSnapshot,
   Toast,
   Tower,
   Vec2,
@@ -20,12 +23,49 @@ const CHAIN_MAX_TARGETS = 4;
 const CHAIN_JUMP_RANGE = 102;
 const CHAIN_DAMAGE_FALLOFF = 0.64;
 const BEAM_LIFETIME = 0.09;
+const LASER_LINE_HALF_WIDTH = 10;
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function supportDamageBoostFor(kind: TowerKind): number {
+  const base = BALANCE.towers.stats[kind];
+  return 'supportDamageBoost' in base ? base.supportDamageBoost : 0;
+}
+
+function supportRangeBoostFor(kind: TowerKind): number {
+  const base = BALANCE.towers.stats[kind];
+  return 'supportRangeBoost' in base ? base.supportRangeBoost : 0;
+}
+
+function incomePerWaveFor(kind: TowerKind): number {
+  const base = BALANCE.towers.stats[kind];
+  return 'incomePerWave' in base ? base.incomePerWave : 0;
+}
+
+function dotDamagePerSecondFor(kind: TowerKind): number {
+  const base = BALANCE.towers.stats[kind];
+  return 'dotDamagePerSecond' in base ? base.dotDamagePerSecond : 0;
+}
+
+function dotDurationFor(kind: TowerKind): number {
+  const base = BALANCE.towers.stats[kind];
+  return 'dotDuration' in base ? base.dotDuration : 0;
+}
+
+function livesLostForEnemy(kind: EnemyKind): number {
+  return kind === 'boss' ? 5 : 1;
+}
+
+interface AbilityChargeState {
+  charges: number;
+  progress: number;
+}
+
 export class Game {
-  private path: PathData;
+  private maps: MapDefinition[];
+
+  private paths: PathData[];
 
   private mapIndex = 0;
 
@@ -89,9 +129,13 @@ export class Game {
 
   private globalRangeBoostRemaining = 0;
 
+  private globalFireRateBoostRemaining = 0;
+
   private autoWaveEnabled = false;
 
   private autoWaveCountdown = 0;
+
+  private abilityCooldowns = this.createAbilityCooldowns();
 
   private kamikazeStarted = false;
 
@@ -104,7 +148,8 @@ export class Game {
   };
 
   constructor() {
-    this.path = createPath(BALANCE.map.maps[0].pathPoints);
+    this.maps = getAvailableMaps();
+    this.paths = [];
     this.pathCellSet = new Set<string>();
     this.pathCellList = [];
     this.setActiveMap(0);
@@ -135,32 +180,38 @@ export class Game {
     this.placementValid = false;
     this.globalDamageBoostRemaining = 0;
     this.globalRangeBoostRemaining = 0;
+    this.globalFireRateBoostRemaining = 0;
     this.autoWaveEnabled = false;
     this.autoWaveCountdown = 0;
+    this.abilityCooldowns = this.createAbilityCooldowns();
     this.kamikazeStarted = false;
     this.idCounters = { enemy: 1, tower: 1, projectile: 1, toast: 1, beam: 1 };
   }
 
   getSnapshot(): GameSnapshot {
-    const mapDef = BALANCE.map.maps[this.mapIndex];
+    const mapDef = this.maps[this.mapIndex];
     return {
       mode: this.mode,
       mapIndex: this.mapIndex,
       mapName: mapDef.name,
+      mapNames: this.maps.map((map) => map.name),
       width: BALANCE.map.width,
       height: BALANCE.map.height,
       gridSize: this.gridSize,
       cols: this.cols,
       rows: this.rows,
-      pathPoints: this.path.points,
+      pathPoints: this.paths[0]?.points ?? [],
+      routes: this.paths.map((path) => ({ points: path.points })),
+      supportPreviews: this.getSupportPreviews(),
       pathCells: this.pathCellList,
-      pathLength: this.path.totalLength,
+      pathLength: this.paths[0]?.totalLength ?? 0,
       enemies: this.enemies,
       towers: this.towers,
       projectiles: this.projectiles,
       beams: this.beams,
       bonusOrb: this.bonusOrb,
       toasts: this.toasts,
+      abilities: this.getAbilitySnapshots(),
       waveNumber: this.isEndlessMode() ? this.completedWaveCount + 1 : Math.min(this.completedWaveCount + 1, BALANCE.waves.length),
       completedWaves: this.completedWaveCount,
       totalWaves: this.isEndlessMode() ? 0 : BALANCE.waves.length,
@@ -202,6 +253,7 @@ export class Game {
       autoWaveCountdown: this.autoWaveCountdown,
       activeGlobalDamageBoost: this.globalDamageBoostRemaining,
       activeGlobalRangeBoost: this.globalRangeBoostRemaining,
+      activeGlobalFireRateBoost: this.globalFireRateBoostRemaining,
     };
   }
 
@@ -323,8 +375,52 @@ export class Game {
     this.speed = this.speed === 1 ? 2 : 1;
   }
 
+  activateAbility(kind: AbilityKind): boolean {
+    if (this.gameOver || this.victory) {
+      return false;
+    }
+
+    if (this.abilityCooldowns[kind].charges <= 0) {
+      return false;
+    }
+
+    const ability = BALANCE.abilities.stats[kind];
+    if (ability.requiresTowers && this.towers.length === 0) {
+      this.pushToast('Build towers before triggering that ability');
+      return false;
+    }
+
+    if (ability.requiresEnemies && this.enemies.length === 0) {
+      this.pushToast('No enemies in the lane');
+      return false;
+    }
+
+    if (kind === 'overclock') {
+      this.globalFireRateBoostRemaining = Math.max(
+        this.globalFireRateBoostRemaining,
+        BALANCE.abilities.stats.overclock.duration,
+      );
+    } else if (kind === 'ionBurst') {
+      for (const enemy of [...this.enemies]) {
+        this.applyDamage(enemy, BALANCE.abilities.stats.ionBurst.damage);
+      }
+    } else {
+      for (const enemy of this.enemies) {
+        enemy.distance = Math.max(0, enemy.distance - BALANCE.abilities.stats.phaseWarp.pushDistance);
+        enemy.slowFactor = clamp(1 - BALANCE.abilities.stats.phaseWarp.slowPct, 0.15, 1);
+        enemy.slowRemaining = Math.max(enemy.slowRemaining, BALANCE.abilities.stats.phaseWarp.slowDuration);
+        enemy.hitFlash = 1;
+      }
+    }
+
+    const abilityState = this.abilityCooldowns[kind];
+    abilityState.charges = Math.max(0, abilityState.charges - 1);
+    this.pushToast(ability.toast);
+    return true;
+  }
+
   cycleMap(delta: number): void {
-    const total = BALANCE.map.maps.length;
+    const total = this.maps.length;
     const next = (this.mapIndex + delta + total) % total;
     this.setMapIndex(next);
   }
@@ -344,8 +440,20 @@ export class Game {
     this.restart();
   }
 
+  reloadMapLibrary(): void {
+    const currentMapId = this.maps[this.mapIndex]?.id;
+    this.maps = getAvailableMaps();
+
+    if (this.maps.length === 0) {
+      return;
+    }
+
+    const nextIndex = currentMapId ? this.maps.findIndex((map) => map.id === currentMapId) : -1;
+    this.setActiveMap(nextIndex >= 0 ? nextIndex : Math.min(this.mapIndex, this.maps.length - 1));
+  }
+
   setMapIndex(index: number): void {
-    const clamped = Math.max(0, Math.min(index, BALANCE.map.maps.length - 1));
+    const clamped = Math.max(0, Math.min(index, this.maps.length - 1));
     if (clamped === this.mapIndex) {
       return;
     }
@@ -429,17 +537,36 @@ export class Game {
     splashRadius: number;
     slowPct: number;
     slowDuration: number;
+    dotDamagePerSecond: number;
+    dotDuration: number;
+    supportDamageBoost: number;
+    supportRangeBoost: number;
+    incomePerWave: number;
   } {
     const levelIndex = tower.level - 1;
     const base = BALANCE.towers.stats[tower.kind];
-    const damageBoost = this.globalDamageBoostRemaining > 0 ? 1 + BALANCE.bonuses.buffs.globalDamageBoost.amount : 1;
-    const rangeBoost = this.globalRangeBoostRemaining > 0 ? 1 + BALANCE.bonuses.buffs.globalRangeBoost.amount : 1;
+    const supportModifiers = this.getSupportModifiersForTower(tower);
+    const damageBoost =
+      (this.globalDamageBoostRemaining > 0 ? 1 + BALANCE.bonuses.buffs.globalDamageBoost.amount : 1) +
+      supportModifiers.damageBoost;
+    const rangeBoost =
+      (this.globalRangeBoostRemaining > 0 ? 1 + BALANCE.bonuses.buffs.globalRangeBoost.amount : 1) +
+      supportModifiers.rangeBoost;
+    const fireRateBoost = this.globalFireRateBoostRemaining > 0 ? 1 + BALANCE.abilities.stats.overclock.fireRateBoost : 1;
 
     const damage =
       base.damage * BALANCE.towers.damageMultiplierByLevel[levelIndex] * damageBoost;
     const range = base.range * BALANCE.towers.rangeMultiplierByLevel[levelIndex] * rangeBoost;
     const fireRate =
-      base.fireRate * BALANCE.towers.fireRateMultiplierByType[tower.kind][levelIndex];
+      base.fireRate * BALANCE.towers.fireRateMultiplierByType[tower.kind][levelIndex] * fireRateBoost;
+    const supportDamageBoost =
+      supportDamageBoostFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex];
+    const supportRangeBoost =
+      supportRangeBoostFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex];
+    const dotDamagePerSecond =
+      dotDamagePerSecondFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex] * damageBoost;
+    const dotDuration = dotDurationFor(tower.kind);
+    const incomePerWave = Math.round(incomePerWaveFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex]);
 
     return {
       damage,
@@ -448,6 +575,131 @@ export class Game {
       splashRadius: base.splashRadius,
       slowPct: base.slowPct,
       slowDuration: base.slowDuration,
+      dotDamagePerSecond,
+      dotDuration,
+      supportDamageBoost,
+      supportRangeBoost,
+      incomePerWave,
+    };
+  }
+
+  private getSupportPreviews(): SupportPreviewSnapshot[] {
+    const previews: SupportPreviewSnapshot[] = [];
+    const selectedTower = this.getSelectedTower();
+
+    if (selectedTower && this.isSupportTower(selectedTower.kind)) {
+      previews.push(this.createSupportPreview(selectedTower.kind, selectedTower.level, selectedTower, false));
+    }
+
+    if (this.placingTowerKind && this.placementPos && this.isSupportTower(this.placingTowerKind)) {
+      previews.push(
+        this.createSupportPreview(
+          this.placingTowerKind,
+          1,
+          {
+            x: this.placementPos.x,
+            y: this.placementPos.y,
+          },
+          true,
+        ),
+      );
+    }
+
+    return previews;
+  }
+
+  private isSupportTower(kind: TowerKind): kind is 'relay' | 'amp' {
+    return kind === 'relay' || kind === 'amp';
+  }
+
+  private getSupportAuraRange(kind: TowerKind, level: number): number {
+    const baseRange = BALANCE.towers.stats[kind].range;
+    const levelMultiplier = BALANCE.towers.rangeMultiplierByLevel[level - 1];
+    const globalRangeMultiplier =
+      this.globalRangeBoostRemaining > 0 ? 1 + BALANCE.bonuses.buffs.globalRangeBoost.amount : 1;
+    return baseRange * levelMultiplier * globalRangeMultiplier;
+  }
+
+  private createSupportPreview(
+    kind: 'relay' | 'amp',
+    level: number,
+    source: Pick<Tower, 'x' | 'y'> & Partial<Pick<Tower, 'id'>>,
+    preview: boolean,
+  ): SupportPreviewSnapshot {
+    const range = this.getSupportAuraRange(kind, level);
+    const sourceTowerId = typeof source.id === 'number' ? source.id : null;
+    const targetTowerIds = this.towers
+      .filter((tower) => tower.id !== sourceTowerId)
+      .filter((tower) => Math.hypot(tower.x - source.x, tower.y - source.y) <= range)
+      .map((tower) => tower.id);
+
+    return {
+      sourceTowerId,
+      sourceKind: kind,
+      sourcePos: { x: source.x, y: source.y },
+      range,
+      targetTowerIds,
+      preview,
+    };
+  }
+
+  private getSupportModifiersForTower(tower: Tower): { damageBoost: number; rangeBoost: number } {
+    let damageBoost = 0;
+    let rangeBoost = 0;
+
+    for (const supportTower of this.towers) {
+      if (supportTower.id === tower.id) {
+        continue;
+      }
+
+      if (supportTower.kind !== 'relay' && supportTower.kind !== 'amp') {
+        continue;
+      }
+
+      const supportStats = this.getTowerStatsWithoutSupport(supportTower);
+      const distance = Math.hypot(supportTower.x - tower.x, supportTower.y - tower.y);
+      if (distance > supportStats.range) {
+        continue;
+      }
+
+      damageBoost += supportStats.supportDamageBoost;
+      rangeBoost += supportStats.supportRangeBoost;
+    }
+
+    return { damageBoost, rangeBoost };
+  }
+
+  private getTowerStatsWithoutSupport(tower: Tower): {
+    damage: number;
+    range: number;
+    fireRate: number;
+    splashRadius: number;
+    slowPct: number;
+    slowDuration: number;
+    dotDamagePerSecond: number;
+    dotDuration: number;
+    supportDamageBoost: number;
+    supportRangeBoost: number;
+    incomePerWave: number;
+  } {
+    const levelIndex = tower.level - 1;
+    const base = BALANCE.towers.stats[tower.kind];
+    const damageBoost = this.globalDamageBoostRemaining > 0 ? 1 + BALANCE.bonuses.buffs.globalDamageBoost.amount : 1;
+    const rangeBoost = this.globalRangeBoostRemaining > 0 ? 1 + BALANCE.bonuses.buffs.globalRangeBoost.amount : 1;
+    const fireRateBoost = this.globalFireRateBoostRemaining > 0 ? 1 + BALANCE.abilities.stats.overclock.fireRateBoost : 1;
+
+    return {
+      damage: base.damage * BALANCE.towers.damageMultiplierByLevel[levelIndex] * damageBoost,
+      range: base.range * BALANCE.towers.rangeMultiplierByLevel[levelIndex] * rangeBoost,
+      fireRate: base.fireRate * BALANCE.towers.fireRateMultiplierByType[tower.kind][levelIndex] * fireRateBoost,
+      splashRadius: base.splashRadius,
+      slowPct: base.slowPct,
+      slowDuration: base.slowDuration,
+      dotDamagePerSecond: dotDamagePerSecondFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex] * damageBoost,
+      dotDuration: dotDurationFor(tower.kind),
+      supportDamageBoost: supportDamageBoostFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex],
+      supportRangeBoost: supportRangeBoostFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex],
+      incomePerWave: Math.round(incomePerWaveFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex]),
     };
   }
 
@@ -467,11 +719,19 @@ export class Game {
   }
 
   private updateBuffs(dt: number): void {
+    const combatActive = this.activeWaves.length > 0 || this.enemies.length > 0;
+    if (!combatActive) {
+      return;
+    }
+
     if (this.globalDamageBoostRemaining > 0) {
       this.globalDamageBoostRemaining = Math.max(0, this.globalDamageBoostRemaining - dt);
     }
     if (this.globalRangeBoostRemaining > 0) {
       this.globalRangeBoostRemaining = Math.max(0, this.globalRangeBoostRemaining - dt);
+    }
+    if (this.globalFireRateBoostRemaining > 0) {
+      this.globalFireRateBoostRemaining = Math.max(0, this.globalFireRateBoostRemaining - dt);
     }
   }
 
@@ -497,17 +757,19 @@ export class Game {
   }
 
   private spawnEnemy(kind: EnemyKind, waveIndex: number, spawnOrder: number): void {
-    this.enemies.push(this.createEnemy(kind, waveIndex, -spawnOrder * SPAWN_STAGGER_DISTANCE));
+    const routeIndex = spawnOrder % Math.max(1, this.paths.length);
+    this.enemies.push(this.createEnemy(kind, routeIndex, waveIndex, -spawnOrder * SPAWN_STAGGER_DISTANCE));
   }
 
-  private createEnemy(kind: EnemyKind, waveIndex: number, distance: number): Enemy {
+  private createEnemy(kind: EnemyKind, routeIndex: number, waveIndex: number, distance: number): Enemy {
     const base = BALANCE.enemies.stats[kind];
-    const hpScale = BALANCE.enemies.hpMultiplierPerWave ** waveIndex;
-    const speedScale = BALANCE.enemies.speedMultiplierPerWave ** waveIndex;
+    const hpScale = BALANCE.enemies.hpMultiplierPerWave ** (kind === 'boss' ? waveIndex * 0.72 : waveIndex);
+    const speedScale = BALANCE.enemies.speedMultiplierPerWave ** (kind === 'boss' ? waveIndex * 0.3 : waveIndex);
     const bountyScale = BALANCE.enemies.bountyMultiplierPerWave ** waveIndex;
     return {
       id: this.idCounters.enemy++,
       kind,
+      routeIndex,
       waveIndex,
       distance,
       hp: Math.round(base.hp * hpScale),
@@ -516,6 +778,8 @@ export class Game {
       bounty: Math.round(base.bounty * bountyScale),
       slowFactor: 1,
       slowRemaining: 0,
+      dotDamagePerSecond: 0,
+      dotRemaining: 0,
       alive: true,
       hitFlash: 0,
     };
@@ -537,13 +801,26 @@ export class Game {
         }
       }
 
+      if (enemy.dotRemaining > 0 && enemy.dotDamagePerSecond > 0) {
+        this.applyDamage(enemy, enemy.dotDamagePerSecond * dt, false);
+        enemy.dotRemaining = Math.max(0, enemy.dotRemaining - dt);
+        if (enemy.dotRemaining <= 0) {
+          enemy.dotDamagePerSecond = 0;
+        }
+      }
+
+      if (!enemy.alive) {
+        continue;
+      }
+
       enemy.hitFlash = Math.max(0, enemy.hitFlash - dt * 7);
       enemy.distance += enemy.speed * enemy.slowFactor * dt;
 
-      if (enemy.distance >= this.path.totalLength) {
-        const loops = Math.max(1, Math.floor(enemy.distance / this.path.totalLength));
-        this.lives -= loops;
-        enemy.distance -= this.path.totalLength * loops;
+      const enemyPath = this.paths[enemy.routeIndex] ?? this.paths[0];
+      if (enemy.distance >= enemyPath.totalLength) {
+        const loops = Math.max(1, Math.floor(enemy.distance / enemyPath.totalLength));
+        this.lives -= loops * livesLostForEnemy(enemy.kind);
+        enemy.distance -= enemyPath.totalLength * loops;
         enemy.distance = Math.max(0, enemy.distance);
         enemy.hitFlash = 1;
       }
@@ -564,14 +841,15 @@ export class Game {
 
     const enemyPositions = new Map<number, Vec2>();
     for (const enemy of this.enemies) {
-      enemyPositions.set(enemy.id, pointAtDistance(this.path, enemy.distance));
+      const enemyPath = this.paths[enemy.routeIndex] ?? this.paths[0];
+      enemyPositions.set(enemy.id, pointAtDistance(enemyPath, enemy.distance));
     }
 
     for (const tower of this.towers) {
       const stats = this.getTowerStats(tower);
       tower.cooldown -= dt;
 
-      if (tower.cooldown > 0) {
+      if (tower.cooldown > 0 || stats.fireRate <= 0 || stats.damage <= 0) {
         continue;
       }
 
@@ -584,9 +862,11 @@ export class Game {
 
       if (tower.kind === 'pulse') {
         this.spawnBeam({ x: tower.x, y: tower.y }, targetPos, 'pulse');
-        this.applyHit(target, stats.damage, 0, 0, 0, targetPos);
+        this.applyHit(target, stats.damage, 0, 0, 0, 0, 0, targetPos);
       } else if (tower.kind === 'chain') {
         this.applyChainStrike(tower, target, targetPos, stats.damage, enemyPositions);
+      } else if (tower.kind === 'laser') {
+        this.applyLaserStrike(tower, targetPos, stats.damage, enemyPositions);
       } else {
         this.projectiles.push({
           id: this.idCounters.projectile++,
@@ -599,6 +879,8 @@ export class Game {
           splashRadius: stats.splashRadius,
           slowPct: stats.slowPct,
           slowDuration: stats.slowDuration,
+          dotDamagePerSecond: stats.dotDamagePerSecond,
+          dotDuration: stats.dotDuration,
           alive: true,
         });
       }
@@ -628,7 +910,8 @@ export class Game {
         continue;
       }
 
-      const targetPos = pointAtDistance(this.path, target.distance);
+      const targetPath = this.paths[target.routeIndex] ?? this.paths[0];
+      const targetPos = pointAtDistance(targetPath, target.distance);
       const dx = targetPos.x - projectile.x;
       const dy = targetPos.y - projectile.y;
       const distance = Math.hypot(dx, dy);
@@ -641,6 +924,8 @@ export class Game {
           projectile.splashRadius,
           projectile.slowPct,
           projectile.slowDuration,
+          projectile.dotDamagePerSecond,
+          projectile.dotDuration,
           targetPos,
         );
         projectile.alive = false;
@@ -717,7 +1002,8 @@ export class Game {
         continue;
       }
 
-      const pos = enemyPositions.get(enemy.id) ?? pointAtDistance(this.path, enemy.distance);
+      const enemyPath = this.paths[enemy.routeIndex] ?? this.paths[0];
+      const pos = enemyPositions.get(enemy.id) ?? pointAtDistance(enemyPath, enemy.distance);
       const distance = Math.hypot(pos.x - fromPos.x, pos.y - fromPos.y);
       if (distance > CHAIN_JUMP_RANGE || distance >= bestDistance) {
         continue;
@@ -751,11 +1037,14 @@ export class Game {
     splashRadius: number,
     slowPct: number,
     slowDuration: number,
+    dotDamagePerSecond: number,
+    dotDuration: number,
     hitPos: Vec2,
   ): void {
     if (splashRadius > 0) {
       for (const enemy of this.enemies) {
-        const pos = pointAtDistance(this.path, enemy.distance);
+        const enemyPath = this.paths[enemy.routeIndex] ?? this.paths[0];
+        const pos = pointAtDistance(enemyPath, enemy.distance);
         if (Math.hypot(pos.x - hitPos.x, pos.y - hitPos.y) <= splashRadius) {
           this.applyDamage(enemy, damage);
         }
@@ -768,25 +1057,60 @@ export class Game {
       target.slowFactor = clamp(1 - slowPct, 0.15, 1);
       target.slowRemaining = Math.max(target.slowRemaining, slowDuration);
     }
+
+    if (dotDamagePerSecond > 0 && dotDuration > 0 && target.alive) {
+      target.dotDamagePerSecond = Math.max(target.dotDamagePerSecond, dotDamagePerSecond);
+      target.dotRemaining = Math.max(target.dotRemaining, dotDuration);
+    }
   }
 
-  private applyDamage(enemy: Enemy, damage: number): void {
+  private applyDamage(enemy: Enemy, damage: number, flash: boolean = true): void {
     if (!enemy.alive) {
       return;
     }
 
     enemy.hp -= damage;
-    enemy.hitFlash = 1;
+    if (flash) {
+      enemy.hitFlash = 1;
+    }
     if (enemy.hp <= 0) {
       enemy.alive = false;
-      this.money += enemy.bounty;
+      this.awardEarnedMoney(enemy.bounty);
       this.score += Math.max(1, Math.floor(enemy.bounty * 4));
+      this.addAbilityProgress('overclock', 1);
       if (enemy.kind === 'blossom') {
-        this.spawnSplitPetals(enemy.waveIndex, enemy.distance);
+        this.spawnSplitPetals(enemy.routeIndex, enemy.waveIndex, enemy.distance);
       }
     }
 
     this.enemies = this.enemies.filter((candidate) => candidate.alive);
+  }
+
+  private applyLaserStrike(
+    tower: Tower,
+    targetPos: Vec2,
+    damage: number,
+    enemyPositions: Map<number, Vec2>,
+  ): void {
+    const horizontal = Math.abs(targetPos.x - tower.x) >= Math.abs(targetPos.y - tower.y);
+    const beamFrom = horizontal ? { x: 0, y: tower.y } : { x: tower.x, y: 0 };
+    const beamTo = horizontal ? { x: BALANCE.map.width, y: tower.y } : { x: tower.x, y: BALANCE.map.height };
+
+    this.spawnBeam(beamFrom, beamTo, 'laser');
+
+    for (const enemy of this.enemies) {
+      const pos = enemyPositions.get(enemy.id);
+      if (!pos) {
+        continue;
+      }
+
+      const distanceToLine = horizontal ? Math.abs(pos.y - tower.y) : Math.abs(pos.x - tower.x);
+      if (distanceToLine > LASER_LINE_HALF_WIDTH) {
+        continue;
+      }
+
+      this.applyDamage(enemy, damage);
+    }
   }
 
   private findTargetForTower(
@@ -836,13 +1160,16 @@ export class Game {
         const baseReward = wave.def.waveReward + BALANCE.economy.betweenWaveBonus;
         const reward = Math.floor(baseReward * wave.rewardMultiplier);
         const interestEarned = Math.floor(this.money * this.interestRatePct);
+        const supportIncome = this.getPassiveIncomePerWave();
         const bonusEarned = Math.max(0, reward - baseReward);
         this.bonusCredits += bonusEarned;
-        this.money += reward + interestEarned;
-        this.score += reward * 2 + interestEarned;
+        this.awardEarnedMoney(reward + interestEarned + supportIncome);
+        this.score += reward * 2 + interestEarned + supportIncome;
         const earlyTag = wave.rewardMultiplier > 1 ? ' (+5%)' : '';
-        this.pushToast(`Wave ${wave.index + 1} clear +${reward}${earlyTag} +${interestEarned} interest`);
+        const bankTag = supportIncome > 0 ? ` +${supportIncome} bank` : '';
+        this.pushToast(`Wave ${wave.index + 1} clear +${reward}${earlyTag} +${interestEarned} interest${bankTag}`);
         this.completedWaveCount += 1;
+        this.addAbilityProgress('phaseWarp', 1);
         this.interestRatePct += BALANCE.economy.interestGainPerWavePct;
         this.maybeSpawnBonusOrb();
       }
@@ -935,7 +1262,7 @@ export class Game {
     } else if (selected === 'globalRangeBoost') {
       this.globalRangeBoostRemaining = Math.max(this.globalRangeBoostRemaining, buff.duration);
     } else if (selected === 'incomeBurst') {
-      this.money += buff.amount;
+      this.awardEarnedMoney(buff.amount);
     } else if (selected === 'livesBurst') {
       this.lives += buff.amount;
     }
@@ -979,6 +1306,10 @@ export class Game {
       rewardMultiplier: earlySend ? EARLY_WAVE_REWARD_MULTIPLIER : 1,
       spawnedCount: 0,
     });
+
+    if (queue.includes('boss')) {
+      this.pushToast(`Boss wave ${waveIndex + 1} incoming`);
+    }
 
     this.nextWaveIndex += 1;
     this.autoWaveCountdown = 0;
@@ -1029,10 +1360,10 @@ export class Game {
     }
   }
 
-  private spawnSplitPetals(waveIndex: number, originDistance: number): void {
+  private spawnSplitPetals(routeIndex: number, waveIndex: number, originDistance: number): void {
     for (let i = 0; i < 5; i += 1) {
       const offset = i * (this.gridSize * 0.22);
-      this.enemies.push(this.createEnemy('petal', waveIndex, Math.max(0, originDistance - offset)));
+      this.enemies.push(this.createEnemy('petal', routeIndex, waveIndex, Math.max(0, originDistance - offset)));
     }
     this.pushToast('Petal Bloom split');
   }
@@ -1124,10 +1455,100 @@ export class Game {
 
   private setActiveMap(index: number): void {
     this.mapIndex = index;
-    const map = BALANCE.map.maps[this.mapIndex];
-    this.path = createPath(map.pathPoints);
-    this.pathCellSet = pathCellsFromPoints(map.pathPoints, this.gridSize);
+    const map = this.maps[this.mapIndex];
+    this.paths = map.routes.map((route) => createPath(route.pathPoints));
+    this.pathCellSet = new Set<string>();
+    for (const route of map.routes) {
+      const routeCells = pathCellsFromPoints(route.pathPoints, this.gridSize);
+      for (const cell of routeCells) {
+        this.pathCellSet.add(cell);
+      }
+    }
     this.pathCellList = Array.from(this.pathCellSet);
+  }
+
+  private createAbilityCooldowns(): Record<AbilityKind, AbilityChargeState> {
+    return {
+      overclock: {
+        charges: BALANCE.abilities.stats.overclock.startingCharges,
+        progress: 0,
+      },
+      ionBurst: {
+        charges: BALANCE.abilities.stats.ionBurst.startingCharges,
+        progress: 0,
+      },
+      phaseWarp: {
+        charges: BALANCE.abilities.stats.phaseWarp.startingCharges,
+        progress: 0,
+      },
+    };
+  }
+
+  private getAbilitySnapshots(): AbilitySnapshot[] {
+    return BALANCE.abilities.order.map((kind) => {
+      const ability = BALANCE.abilities.stats[kind];
+      const state = this.abilityCooldowns[kind];
+      const activeRemaining = kind === 'overclock' ? this.globalFireRateBoostRemaining : 0;
+      const hasRequiredEnemies = !ability.requiresEnemies || this.enemies.length > 0;
+      const hasRequiredTowers = !ability.requiresTowers || this.towers.length > 0;
+      return {
+        kind,
+        charges: state.charges,
+        maxCharges: ability.maxCharges,
+        cooldownRemaining: 0,
+        activeRemaining,
+        available:
+          !this.gameOver &&
+          !this.victory &&
+          state.charges > 0 &&
+          hasRequiredEnemies &&
+          hasRequiredTowers,
+      };
+    });
+  }
+
+  private getPassiveIncomePerWave(): number {
+    return this.towers.reduce((total, tower) => total + this.getTowerStatsWithoutSupport(tower).incomePerWave, 0);
+  }
+
+  private awardEarnedMoney(amount: number): void {
+    if (amount <= 0) {
+      return;
+    }
+
+    this.money += amount;
+    this.addAbilityProgress('ionBurst', amount);
+  }
+
+  private addAbilityProgress(kind: AbilityKind, amount: number): void {
+    if (amount <= 0) {
+      return;
+    }
+
+    const ability = BALANCE.abilities.stats[kind];
+    const state = this.abilityCooldowns[kind];
+    if (state.charges >= ability.maxCharges) {
+      return;
+    }
+
+    state.progress += amount;
+    let chargesGained = 0;
+
+    while (state.charges < ability.maxCharges && state.progress >= ability.chargeThreshold) {
+      state.progress -= ability.chargeThreshold;
+      state.charges += 1;
+      chargesGained += 1;
+    }
+
+    if (state.charges >= ability.maxCharges) {
+      state.progress = 0;
+    }
+
+    if (chargesGained > 0) {
+      this.pushToast(
+        chargesGained > 1 ? `${ability.name} +${chargesGained} charges` : `${ability.name} charge ready`,
+      );
+    }
   }
 
   private hasMoreWaves(): boolean {

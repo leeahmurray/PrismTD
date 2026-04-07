@@ -1,4 +1,4 @@
-import type { EnemyKind, GameMode, TowerKind, WaveDefinition } from '../balance';
+import type { AbilityKind, EnemyKind, GameMode, TowerKind, WaveDefinition } from '../balance';
 
 export type TargetingMode = 'first' | 'closest';
 
@@ -10,6 +10,7 @@ export interface Vec2 {
 export interface Enemy {
   id: number;
   kind: EnemyKind;
+  routeIndex: number;
   waveIndex: number;
   distance: number;
   hp: number;
@@ -18,6 +19,8 @@ export interface Enemy {
   bounty: number;
   slowFactor: number;
   slowRemaining: number;
+  dotDamagePerSecond: number;
+  dotRemaining: number;
   alive: boolean;
   hitFlash: number;
 }
@@ -43,6 +46,8 @@ export interface Projectile {
   splashRadius: number;
   slowPct: number;
   slowDuration: number;
+  dotDamagePerSecond: number;
+  dotDuration: number;
   alive: boolean;
 }
 
@@ -79,16 +84,41 @@ export interface Toast {
   remaining: number;
 }
 
+export interface AbilitySnapshot {
+  kind: AbilityKind;
+  charges: number;
+  maxCharges: number;
+  cooldownRemaining: number;
+  activeRemaining: number;
+  available: boolean;
+}
+
+export interface MapRouteSnapshot {
+  points: Vec2[];
+}
+
+export interface SupportPreviewSnapshot {
+  sourceTowerId: number | null;
+  sourceKind: TowerKind;
+  sourcePos: Vec2;
+  range: number;
+  targetTowerIds: number[];
+  preview: boolean;
+}
+
 export interface GameSnapshot {
   mode: GameMode;
   mapIndex: number;
   mapName: string;
+  mapNames: string[];
   width: number;
   height: number;
   gridSize: number;
   cols: number;
   rows: number;
   pathPoints: Vec2[];
+  routes: MapRouteSnapshot[];
+  supportPreviews: SupportPreviewSnapshot[];
   pathCells: string[];
   pathLength: number;
   enemies: Enemy[];
@@ -97,6 +127,7 @@ export interface GameSnapshot {
   beams: Beam[];
   bonusOrb: BonusOrb | null;
   toasts: Toast[];
+  abilities: AbilitySnapshot[];
   waveNumber: number;
   completedWaves: number;
   totalWaves: number;
@@ -124,4 +155,5 @@ export interface GameSnapshot {
   autoWaveCountdown: number;
   activeGlobalDamageBoost: number;
   activeGlobalRangeBoost: number;
+  activeGlobalFireRateBoost: number;
 }

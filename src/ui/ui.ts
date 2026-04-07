@@ -1,6 +1,6 @@
-import { BALANCE, type GameMode, type TowerKind } from '../balance';
+import { BALANCE, type AbilityKind, type GameMode, type TowerKind } from '../balance';
 import { Game } from '../game/game';
-import type { GameSnapshot } from '../game/types';
+import type { AbilitySnapshot, GameSnapshot } from '../game/types';
 
 interface MusicTrackOption {
   id: string;
@@ -15,6 +15,7 @@ interface MusicState {
 
 interface UIActions {
   onBuildSelect: (kind: TowerKind | null) => void;
+  onTriggerAbility: (kind: AbilityKind) => void;
   onCycleMode: (delta: number) => void;
   onCycleMap: (delta: number) => void;
   onStartWave: () => void;
@@ -82,6 +83,8 @@ export class UI {
 
   private buildButtons: Record<TowerKind, HTMLButtonElement>;
 
+  private abilityButtons: Record<AbilityKind, HTMLButtonElement>;
+
   private selectedPanel: HTMLDivElement;
 
   private mobileActionsEl: HTMLDivElement;
@@ -110,7 +113,7 @@ export class UI {
 
   private readonly modeNamesById = new Map(BALANCE.modes.list.map((mode) => [mode.id, mode.name]));
 
-  private readonly maps = BALANCE.map.maps.map((map) => map.name);
+  private maps: string[] = [];
 
   constructor(headerRoot: HTMLElement, sidebarRoot: HTMLElement, actions: UIActions) {
     this.headerRoot = headerRoot;
@@ -393,15 +396,51 @@ export class UI {
     const novaButton = this.createBuildButton('nova');
     const frostButton = this.createBuildButton('frost');
     const chainButton = this.createBuildButton('chain');
+    const laserButton = this.createBuildButton('laser');
+    const decayButton = this.createBuildButton('decay');
+    const relayButton = this.createBuildButton('relay');
+    const ampButton = this.createBuildButton('amp');
+    const bankButton = this.createBuildButton('bank');
 
     this.buildButtons = {
       pulse: pulseButton,
       nova: novaButton,
       frost: frostButton,
       chain: chainButton,
+      laser: laserButton,
+      decay: decayButton,
+      relay: relayButton,
+      amp: ampButton,
+      bank: bankButton,
     };
 
-    buildPanel.append(pulseButton, novaButton, frostButton, chainButton);
+    buildPanel.append(
+      pulseButton,
+      novaButton,
+      frostButton,
+      chainButton,
+      laserButton,
+      decayButton,
+      relayButton,
+      ampButton,
+      bankButton,
+    );
+
+    const abilityPanel = document.createElement('div');
+    abilityPanel.className = 'panel ability-panel';
+    abilityPanel.innerHTML = '<strong>Command Abilities</strong>';
+
+    const overclockButton = this.createAbilityButton('overclock');
+    const ionBurstButton = this.createAbilityButton('ionBurst');
+    const phaseWarpButton = this.createAbilityButton('phaseWarp');
+
+    this.abilityButtons = {
+      overclock: overclockButton,
+      ionBurst: ionBurstButton,
+      phaseWarp: phaseWarpButton,
+    };
+
+    abilityPanel.append(overclockButton, ionBurstButton, phaseWarpButton);
 
     this.selectedPanel = document.createElement('div');
     this.selectedPanel.className = 'panel selected-panel';
@@ -436,7 +475,7 @@ export class UI {
       this.cancelMapSwitch();
     });
 
-    this.sidebarRoot.append(buildPanel, this.selectedPanel);
+    this.sidebarRoot.append(buildPanel, this.selectedPanel, abilityPanel);
 
     this.syncMusicState();
     this.updateModeDisplay();
@@ -445,6 +484,7 @@ export class UI {
 
   update(snapshot: GameSnapshot, game: Game): void {
     this.latestSnapshot = snapshot;
+    this.maps = snapshot.mapNames;
 
     if (snapshot.mapIndex !== this.mapIndex) {
       this.mapIndex = snapshot.mapIndex;
@@ -487,6 +527,7 @@ export class UI {
       button.disabled = snapshot.gameOver || snapshot.victory;
     }
 
+    this.renderAbilities(snapshot);
     this.syncMusicState();
     this.renderSelected(snapshot, game);
     this.renderMobileActions(snapshot, game);
@@ -511,6 +552,26 @@ export class UI {
     button.title = BALANCE.towers.stats[kind].name;
     button.innerHTML = `<span class="tower-glyph ${kind}"></span><span class="tower-cost">$${cost}</span>`;
     this.bindButtonPress(button, () => this.actions.onBuildSelect(kind));
+
+    return button;
+  }
+
+  private createAbilityButton(kind: AbilityKind): HTMLButtonElement {
+    const button = document.createElement('button');
+    const ability = BALANCE.abilities.stats[kind];
+    button.className = `ability-btn ${kind}`;
+    button.title = `${ability.name} - ${ability.chargeSourceLabel}`;
+    button.innerHTML = `
+      <span class="ability-name">${ability.name}</span>
+      <span class="ability-desc">${ability.description}</span>
+      <div class="ability-charges" aria-hidden="true">
+        <span class="ability-charge-bar"></span>
+        <span class="ability-charge-bar"></span>
+        <span class="ability-charge-bar"></span>
+      </div>
+      <span class="ability-state">READY</span>
+    `;
+    this.bindButtonPress(button, () => this.actions.onTriggerAbility(kind));
 
     return button;
   }
@@ -577,11 +638,31 @@ export class UI {
   }
 
   private updateMapDisplay(): void {
-    this.mapNameEl.textContent = this.maps[this.mapIndex];
+    this.mapNameEl.textContent = this.maps[this.mapIndex] ?? 'Map';
   }
 
   private updateModeDisplay(): void {
     this.modeNameEl.textContent = this.modeNamesById.get(this.mode) ?? this.mode;
+  }
+
+  private renderAbilities(snapshot: GameSnapshot): void {
+    for (const abilityState of snapshot.abilities) {
+      const button = this.abilityButtons[abilityState.kind];
+      const stateEl = button.querySelector<HTMLSpanElement>('.ability-state');
+      const chargeBars = button.querySelectorAll<HTMLSpanElement>('.ability-charge-bar');
+      if (!stateEl) {
+        continue;
+      }
+
+      button.disabled = !abilityState.available;
+      button.classList.toggle('ready', abilityState.available);
+      button.classList.toggle('cooldown', abilityState.charges === 0);
+      button.classList.toggle('active', abilityState.activeRemaining > 0);
+      chargeBars.forEach((bar, index) => {
+        bar.classList.toggle('active', index < abilityState.charges);
+      });
+      stateEl.textContent = this.abilityStateText(abilityState);
+    }
   }
 
   private renderSelected(snapshot: GameSnapshot, game: Game): void {
@@ -602,6 +683,11 @@ export class UI {
           splashRadius: base.splashRadius,
           slowPct: base.slowPct,
           slowDuration: base.slowDuration,
+          dotDamagePerSecond: 'dotDamagePerSecond' in base ? base.dotDamagePerSecond : 0,
+          dotDuration: 'dotDuration' in base ? base.dotDuration : 0,
+          supportDamageBoost: 'supportDamageBoost' in base ? base.supportDamageBoost : 0,
+          supportRangeBoost: 'supportRangeBoost' in base ? base.supportRangeBoost : 0,
+          incomePerWave: 'incomePerWave' in base ? base.incomePerWave : 0,
         })}</div>
         <p>Click an open tile on the map to place.</p>
       `;
@@ -622,13 +708,15 @@ export class UI {
 
     this.selectedPanel.innerHTML = `
       <strong>${towerInfo.name}</strong>
-      <div>Cost $${towerInfo.cost}</div>
-      <div>Level ${selectedTower.level}/${BALANCE.towers.maxLevel}</div>
-      <div>Damage ${stats.damage.toFixed(1)}</div>
-      <div>Rate ${stats.fireRate.toFixed(2)}/s</div>
-      <div>Range ${stats.range.toFixed(1)}</div>
-      <div>Special ${this.specialText(selectedTower.kind, stats)}</div>
-      <div>Targeting ${selectedTower.targeting}</div>
+      <div class="selected-stats-grid">
+        <div>Cost $${towerInfo.cost}</div>
+        <div>Level ${selectedTower.level}/${BALANCE.towers.maxLevel}</div>
+        <div>Damage ${stats.damage.toFixed(1)}</div>
+        <div>Rate ${stats.fireRate.toFixed(2)}/s</div>
+        <div>Range ${stats.range.toFixed(1)}</div>
+        <div>Target ${selectedTower.targeting}</div>
+      </div>
+      <div class="selected-special">Special ${this.specialText(selectedTower.kind, stats)}</div>
       <div class="panel-actions">
         <button id="upgrade-btn" class="upgrade-btn" ${canUpgrade ? '' : 'disabled'}>
           Upgrade (${selectedTower.level >= BALANCE.towers.maxLevel ? 'MAX' : upgradeCost})
@@ -706,7 +794,14 @@ export class UI {
     if (lower.includes('burst') || lower.includes('clear +')) {
       return { tone: 'toast-money', icon: '$' };
     }
-    if (lower.includes('overdrive') || lower.includes('longshot') || lower.includes('slow')) {
+    if (
+      lower.includes('overdrive') ||
+      lower.includes('longshot') ||
+      lower.includes('slow') ||
+      lower.includes('overclock') ||
+      lower.includes('phase warp') ||
+      lower.includes('ion burst')
+    ) {
       return { tone: 'toast-buff', icon: '*' };
     }
     return { tone: 'toast-info', icon: 'i' };
@@ -740,6 +835,31 @@ export class UI {
     if (kind === 'chain') {
       return '4-target chain beam';
     }
+    if (kind === 'laser') {
+      return 'Cardinal rail beam across the map';
+    }
+    if (kind === 'decay') {
+      return `Decay ${stats.dotDamagePerSecond.toFixed(1)}/s for ${stats.dotDuration.toFixed(1)}s`;
+    }
+    if (kind === 'relay') {
+      return `+${Math.round(stats.supportRangeBoost * 100)}% range aura`;
+    }
+    if (kind === 'amp') {
+      return `+${Math.round(stats.supportDamageBoost * 100)}% damage aura`;
+    }
+    if (kind === 'bank') {
+      return `+${stats.incomePerWave} credits per wave`;
+    }
     return 'Direct beam';
+  }
+
+  private abilityStateText(ability: AbilitySnapshot): string {
+    if (ability.activeRemaining > 0) {
+      return 'ACTIVE';
+    }
+    if (ability.charges > 0) {
+      return 'READY';
+    }
+    return 'BUILDING';
   }
 }
