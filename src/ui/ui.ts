@@ -85,7 +85,13 @@ export class UI {
 
   private abilityButtons: Record<AbilityKind, HTMLButtonElement>;
 
+  private abilityPanel: HTMLDivElement;
+
+  private buildPanel: HTMLDivElement;
+
   private selectedPanel: HTMLDivElement;
+
+  private panelLayoutKey = '';
 
   private mobileActionsEl: HTMLDivElement;
 
@@ -388,9 +394,9 @@ export class UI {
 
     this.headerRoot.append(headerTop, utilityRow, this.mobileActionsEl, this.musicModalEl);
 
-    const buildPanel = document.createElement('div');
-    buildPanel.className = 'panel build-panel';
-    buildPanel.innerHTML = '<strong>Tower Select</strong>';
+    this.buildPanel = document.createElement('div');
+    this.buildPanel.className = 'panel build-panel';
+    this.buildPanel.innerHTML = '<strong>Tower Select</strong>';
 
     const pulseButton = this.createBuildButton('pulse');
     const novaButton = this.createBuildButton('nova');
@@ -414,7 +420,7 @@ export class UI {
       bank: bankButton,
     };
 
-    buildPanel.append(
+    this.buildPanel.append(
       pulseButton,
       novaButton,
       frostButton,
@@ -426,9 +432,9 @@ export class UI {
       bankButton,
     );
 
-    const abilityPanel = document.createElement('div');
-    abilityPanel.className = 'panel ability-panel';
-    abilityPanel.innerHTML = '<strong>Command Abilities</strong>';
+    this.abilityPanel = document.createElement('div');
+    this.abilityPanel.className = 'panel ability-panel';
+    this.abilityPanel.innerHTML = '<strong>Command Abilities</strong>';
 
     const overclockButton = this.createAbilityButton('overclock');
     const ionBurstButton = this.createAbilityButton('ionBurst');
@@ -440,7 +446,7 @@ export class UI {
       phaseWarp: phaseWarpButton,
     };
 
-    abilityPanel.append(overclockButton, ionBurstButton, phaseWarpButton);
+    this.abilityPanel.append(overclockButton, ionBurstButton, phaseWarpButton);
 
     this.selectedPanel = document.createElement('div');
     this.selectedPanel.className = 'panel selected-panel';
@@ -475,7 +481,7 @@ export class UI {
       this.cancelMapSwitch();
     });
 
-    this.sidebarRoot.append(buildPanel, this.selectedPanel, abilityPanel);
+    this.sidebarRoot.append(this.buildPanel, this.selectedPanel, this.abilityPanel);
 
     this.syncMusicState();
     this.updateModeDisplay();
@@ -516,6 +522,7 @@ export class UI {
 
     this.speedEl.textContent = `${snapshot.speed}x`;
     const mobileLayout = window.matchMedia('(max-width: 960px)').matches;
+    this.reorderPanelsForViewport(snapshot.selectedTowerId !== null, mobileLayout);
     this.pauseEl.textContent = mobileLayout ? (snapshot.paused ? 'RESUME' : 'PAUSE') : (snapshot.paused ? '▶' : '⏸');
     this.pauseEl.title = snapshot.paused ? 'Resume' : 'Pause';
     this.restartEl.textContent = mobileLayout ? 'RESTART' : '↻';
@@ -861,5 +868,31 @@ export class UI {
       return 'READY';
     }
     return 'BUILDING';
+  }
+
+  private reorderPanelsForViewport(hasSelectedTower: boolean, mobileLayout: boolean): void {
+    const nextLayoutKey = mobileLayout
+      ? hasSelectedTower
+        ? 'mobile-selected'
+        : 'mobile-default'
+      : 'desktop';
+
+    if (this.panelLayoutKey === nextLayoutKey) {
+      return;
+    }
+
+    this.panelLayoutKey = nextLayoutKey;
+
+    if (mobileLayout) {
+      if (hasSelectedTower) {
+        this.sidebarRoot.append(this.selectedPanel, this.abilityPanel, this.buildPanel);
+        return;
+      }
+
+      this.sidebarRoot.append(this.abilityPanel, this.buildPanel, this.selectedPanel);
+      return;
+    }
+
+    this.sidebarRoot.append(this.buildPanel, this.selectedPanel, this.abilityPanel);
   }
 }

@@ -1,5 +1,5 @@
 import { BALANCE, type EnemyKind, type TowerKind } from '../balance';
-import { createPath, pointAtDistance } from '../game/path';
+import { createPath, pointAtDistance, type PathData } from '../game/path';
 import type { GameSnapshot } from '../game/types';
 import { glowFill, glowStroke } from './neon';
 
@@ -33,6 +33,49 @@ const COLORS = {
   tile: '#0B0F1A',
 } as const;
 
+function useMobileRenderMode(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return false;
+  }
+
+  return window.matchMedia('(max-width: 960px), (pointer: coarse)').matches;
+}
+
+const routePathCache = new WeakMap<ReadonlyArray<{ x: number; y: number }>, PathData>();
+const pathCellSetCache = new WeakMap<ReadonlyArray<string>, Set<string>>();
+
+let staticBoardCache:
+  | {
+      pathCells: ReadonlyArray<string>;
+      width: number;
+      height: number;
+      mobile: boolean;
+      canvas: HTMLCanvasElement;
+    }
+  | null = null;
+
+function getCachedRoutePath(points: ReadonlyArray<{ x: number; y: number }>): PathData {
+  const cached = routePathCache.get(points);
+  if (cached) {
+    return cached;
+  }
+
+  const next = createPath(points);
+  routePathCache.set(points, next);
+  return next;
+}
+
+function getCachedPathCellSet(pathCells: ReadonlyArray<string>): Set<string> {
+  const cached = pathCellSetCache.get(pathCells);
+  if (cached) {
+    return cached;
+  }
+
+  const next = new Set(pathCells);
+  pathCellSetCache.set(pathCells, next);
+  return next;
+}
+
 function towerColor(kind: TowerKind): string {
   if (kind === 'pulse') return COLORS.pulse;
   if (kind === 'nova') return COLORS.nova;
@@ -61,9 +104,9 @@ function getTowerRange(kind: TowerKind, level: number, rangeBoostActive: boolean
   return base * levelMul * boostMul;
 }
 
-function drawBoard(ctx: CanvasRenderingContext2D, snapshot: GameSnapshot): void {
-  const path = new Set(snapshot.pathCells);
+function drawBoard(ctx: CanvasRenderingContext2D, snapshot: GameSnapshot, path: ReadonlySet<string>): void {
   const half = snapshot.gridSize / 2;
+  const mobileRenderMode = useMobileRenderMode();
 
   for (let row = 1; row < snapshot.rows; row += 1) {
     for (let col = 1; col < snapshot.cols; col += 1) {
@@ -84,6 +127,10 @@ function drawBoard(ctx: CanvasRenderingContext2D, snapshot: GameSnapshot): void 
       ctx.rect(x - half + 1, y - half + 1, snapshot.gridSize - 2, snapshot.gridSize - 2);
       glowStroke(ctx, COLORS.grid, 1, 0.6, 0);
 
+      if (mobileRenderMode) {
+        continue;
+      }
+
       ctx.beginPath();
       ctx.moveTo(x - half + 4, y + half - 5);
       ctx.lineTo(x + half - 5, y - half + 4);
@@ -92,9 +139,9 @@ function drawBoard(ctx: CanvasRenderingContext2D, snapshot: GameSnapshot): void 
   }
 }
 
-function drawPathEdges(ctx: CanvasRenderingContext2D, snapshot: GameSnapshot): void {
-  const path = new Set(snapshot.pathCells);
+function drawPathEdges(ctx: CanvasRenderingContext2D, snapshot: GameSnapshot, path: ReadonlySet<string>): void {
   const half = snapshot.gridSize / 2;
+  const mobileRenderMode = useMobileRenderMode();
   const hasPathCell = (col: number, row: number): boolean => path.has(`${col},${row}`);
 
   for (let row = 1; row < snapshot.rows; row += 1) {
@@ -114,58 +161,107 @@ function drawPathEdges(ctx: CanvasRenderingContext2D, snapshot: GameSnapshot): v
         ctx.beginPath();
         ctx.moveTo(x - half + 1, y - half + 1);
         ctx.lineTo(x - half + 1, y + half - 1);
-        glowStroke(ctx, COLORS.path, 1.5, 0.8, 6);
-        ctx.beginPath();
-        ctx.moveTo(x - half + 1, y - half + 1);
-        ctx.lineTo(x - half + 1, y + half - 1);
-        glowStroke(ctx, COLORS.pathInner, 0.9, 0.5, 0);
+        glowStroke(ctx, COLORS.path, 1.5, 0.8, mobileRenderMode ? 2 : 6);
+        if (!mobileRenderMode) {
+          ctx.beginPath();
+          ctx.moveTo(x - half + 1, y - half + 1);
+          ctx.lineTo(x - half + 1, y + half - 1);
+          glowStroke(ctx, COLORS.pathInner, 0.9, 0.5, 0);
+        }
       }
 
       if (right) {
         ctx.beginPath();
         ctx.moveTo(x + half - 1, y - half + 1);
         ctx.lineTo(x + half - 1, y + half - 1);
-        glowStroke(ctx, COLORS.path, 1.5, 0.8, 6);
-        ctx.beginPath();
-        ctx.moveTo(x + half - 1, y - half + 1);
-        ctx.lineTo(x + half - 1, y + half - 1);
-        glowStroke(ctx, COLORS.pathInner, 0.9, 0.5, 0);
+        glowStroke(ctx, COLORS.path, 1.5, 0.8, mobileRenderMode ? 2 : 6);
+        if (!mobileRenderMode) {
+          ctx.beginPath();
+          ctx.moveTo(x + half - 1, y - half + 1);
+          ctx.lineTo(x + half - 1, y + half - 1);
+          glowStroke(ctx, COLORS.pathInner, 0.9, 0.5, 0);
+        }
       }
 
       if (top) {
         ctx.beginPath();
         ctx.moveTo(x - half + 1, y - half + 1);
         ctx.lineTo(x + half - 1, y - half + 1);
-        glowStroke(ctx, COLORS.path, 1.5, 0.8, 6);
-        ctx.beginPath();
-        ctx.moveTo(x - half + 1, y - half + 1);
-        ctx.lineTo(x + half - 1, y - half + 1);
-        glowStroke(ctx, COLORS.pathInner, 0.9, 0.5, 0);
+        glowStroke(ctx, COLORS.path, 1.5, 0.8, mobileRenderMode ? 2 : 6);
+        if (!mobileRenderMode) {
+          ctx.beginPath();
+          ctx.moveTo(x - half + 1, y - half + 1);
+          ctx.lineTo(x + half - 1, y - half + 1);
+          glowStroke(ctx, COLORS.pathInner, 0.9, 0.5, 0);
+        }
       }
 
       if (bottom) {
         ctx.beginPath();
         ctx.moveTo(x - half + 1, y + half - 1);
         ctx.lineTo(x + half - 1, y + half - 1);
-        glowStroke(ctx, COLORS.path, 1.5, 0.8, 6);
-        ctx.beginPath();
-        ctx.moveTo(x - half + 1, y + half - 1);
-        ctx.lineTo(x + half - 1, y + half - 1);
-        glowStroke(ctx, COLORS.pathInner, 0.9, 0.5, 0);
+        glowStroke(ctx, COLORS.path, 1.5, 0.8, mobileRenderMode ? 2 : 6);
+        if (!mobileRenderMode) {
+          ctx.beginPath();
+          ctx.moveTo(x - half + 1, y + half - 1);
+          ctx.lineTo(x + half - 1, y + half - 1);
+          glowStroke(ctx, COLORS.pathInner, 0.9, 0.5, 0);
+        }
       }
     }
   }
 }
 
+function getStaticBoardCanvas(snapshot: GameSnapshot, mobileRenderMode: boolean): HTMLCanvasElement | null {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  if (
+    staticBoardCache &&
+    staticBoardCache.pathCells === snapshot.pathCells &&
+    staticBoardCache.width === snapshot.width &&
+    staticBoardCache.height === snapshot.height &&
+    staticBoardCache.mobile === mobileRenderMode
+  ) {
+    return staticBoardCache.canvas;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = snapshot.width;
+  canvas.height = snapshot.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return null;
+  }
+
+  const pathCellSet = getCachedPathCellSet(snapshot.pathCells);
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, snapshot.width, snapshot.height);
+  drawBoard(ctx, snapshot, pathCellSet);
+  drawPathEdges(ctx, snapshot, pathCellSet);
+
+  staticBoardCache = {
+    pathCells: snapshot.pathCells,
+    width: snapshot.width,
+    height: snapshot.height,
+    mobile: mobileRenderMode,
+    canvas,
+  };
+
+  return canvas;
+}
+
 function drawEntryExitMarkers(ctx: CanvasRenderingContext2D, snapshot: GameSnapshot, time: number): void {
   const half = snapshot.gridSize / 2;
+  const mobileRenderMode = useMobileRenderMode();
 
   const drawGate = (a: { x: number; y: number }, b: { x: number; y: number }, color: string): void => {
     const horizontal = Math.abs(b.x - a.x) > Math.abs(b.y - a.y);
     const cycleMs = 5000;
     const phase = (time % cycleMs) / cycleMs;
     const eased = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2);
-    const pulse = 0.52 + eased * 0.42;
+    const pulse = mobileRenderMode ? 0.72 : 0.52 + eased * 0.42;
     ctx.beginPath();
     if (horizontal) {
       const edgeX = b.x > a.x ? a.x - half + 2 : a.x + half - 2;
@@ -176,7 +272,7 @@ function drawEntryExitMarkers(ctx: CanvasRenderingContext2D, snapshot: GameSnaps
       ctx.moveTo(a.x - half + 3, edgeY);
       ctx.lineTo(a.x + half - 3, edgeY);
     }
-    glowStroke(ctx, color, 2.8, pulse, 22);
+    glowStroke(ctx, color, 2.8, pulse, mobileRenderMode ? 8 : 22);
   };
 
   for (const route of snapshot.routes) {
@@ -416,18 +512,19 @@ function drawSupportPreviews(
     return;
   }
 
+  const mobileRenderMode = useMobileRenderMode();
   const towersById = new Map(snapshot.towers.map((tower) => [tower.id, tower] as const));
 
   for (const preview of snapshot.supportPreviews) {
     const color = preview.sourceKind === 'relay' ? COLORS.relay : COLORS.amp;
-    const pulse = 0.5 + (Math.sin(time * 0.008) + 1) * 0.14;
+    const pulse = mobileRenderMode ? 0.5 : 0.5 + (Math.sin(time * 0.008) + 1) * 0.14;
     const auraAlpha = preview.preview ? 0.48 : 0.34;
     const linkAlpha = preview.preview ? 0.4 : 0.26;
     const haloAlpha = preview.preview ? 0.72 : 0.5;
 
     ctx.beginPath();
     ctx.arc(preview.sourcePos.x, preview.sourcePos.y, preview.range, 0, Math.PI * 2);
-    glowStroke(ctx, color, preview.preview ? 1.4 : 1.1, auraAlpha, 10);
+    glowStroke(ctx, color, preview.preview ? 1.4 : 1.1, auraAlpha, mobileRenderMode ? 4 : 10);
 
     for (const targetTowerId of preview.targetTowerIds) {
       const tower = towersById.get(targetTowerId);
@@ -438,11 +535,19 @@ function drawSupportPreviews(
       ctx.beginPath();
       ctx.moveTo(preview.sourcePos.x, preview.sourcePos.y);
       ctx.lineTo(tower.x, tower.y);
-      glowStroke(ctx, color, preview.preview ? 1.6 : 1.2, linkAlpha, 10);
+      glowStroke(ctx, color, preview.preview ? 1.6 : 1.2, linkAlpha, mobileRenderMode ? 4 : 10);
+
+      if (mobileRenderMode) {
+        continue;
+      }
 
       ctx.beginPath();
       ctx.arc(tower.x, tower.y, 17 + pulse * 2, 0, Math.PI * 2);
       glowStroke(ctx, color, 1.7, haloAlpha, 12);
+    }
+
+    if (mobileRenderMode) {
+      continue;
     }
 
     ctx.beginPath();
@@ -456,13 +561,21 @@ export function render(
   snapshot: GameSnapshot,
   time: number,
 ): void {
-  const routePaths = snapshot.routes.map((route) => createPath(route.points));
+  const mobileRenderMode = useMobileRenderMode();
+  const routePaths = snapshot.routes.map((route) => getCachedRoutePath(route.points));
   ctx.clearRect(0, 0, snapshot.width, snapshot.height);
-  ctx.fillStyle = COLORS.bg;
-  ctx.fillRect(0, 0, snapshot.width, snapshot.height);
 
-  drawBoard(ctx, snapshot);
-  drawPathEdges(ctx, snapshot);
+  const staticBoard = getStaticBoardCanvas(snapshot, mobileRenderMode);
+  if (staticBoard) {
+    ctx.drawImage(staticBoard, 0, 0);
+  } else {
+    const pathCellSet = getCachedPathCellSet(snapshot.pathCells);
+    ctx.fillStyle = COLORS.bg;
+    ctx.fillRect(0, 0, snapshot.width, snapshot.height);
+    drawBoard(ctx, snapshot, pathCellSet);
+    drawPathEdges(ctx, snapshot, pathCellSet);
+  }
+
   drawEntryExitMarkers(ctx, snapshot, time);
 
   const rangeBoostActive = snapshot.activeGlobalRangeBoost > 0;
@@ -494,7 +607,7 @@ export function render(
 
   for (const tower of snapshot.towers) {
     drawTower(ctx, tower.kind, tower.x, tower.y, snapshot.selectedTowerId === tower.id);
-    if (fireRateBoostActive) {
+    if (fireRateBoostActive && !mobileRenderMode) {
       ctx.beginPath();
       ctx.arc(tower.x, tower.y, 19 + Math.sin(time * 0.01) * 2, 0, Math.PI * 2);
       glowStroke(ctx, '#FFB347', 1.2, 0.5, 10);
@@ -511,7 +624,7 @@ export function render(
     const color = towerColor(projectile.kind);
     ctx.beginPath();
     ctx.arc(projectile.x, projectile.y, projectile.kind === 'nova' ? 4 : 3, 0, Math.PI * 2);
-    glowFill(ctx, color, 0.85, 10);
+    glowFill(ctx, color, 0.85, mobileRenderMode ? 4 : 10);
   }
 
   for (const beam of snapshot.beams) {
@@ -520,7 +633,7 @@ export function render(
     ctx.beginPath();
     ctx.moveTo(beam.from.x, beam.from.y);
     ctx.lineTo(beam.to.x, beam.to.y);
-    glowStroke(ctx, color, beam.kind === 'chain' ? 2.2 : 1.6, 0.8 * alpha, 10);
+    glowStroke(ctx, color, beam.kind === 'chain' ? 2.2 : 1.6, 0.8 * alpha, mobileRenderMode ? 4 : 10);
   }
 
   if (snapshot.placingTowerKind && snapshot.placementPos) {
