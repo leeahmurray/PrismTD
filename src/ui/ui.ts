@@ -87,6 +87,8 @@ export class UI {
 
   private abilityPanel: HTMLDivElement;
 
+  private mobileAbilityDockEl: HTMLDivElement;
+
   private buildPanel: HTMLDivElement;
 
   private selectedPanel: HTMLDivElement;
@@ -383,6 +385,9 @@ export class UI {
 
     this.mobileActionsEl.append(this.mobileUpgradeEl, this.mobileSellEl, this.mobileTargetEl);
 
+    this.mobileAbilityDockEl = document.createElement('div');
+    this.mobileAbilityDockEl.className = 'mobile-ability-dock';
+
     const statusLayout = document.createElement('div');
     statusLayout.className = 'status-layout';
     statusLayout.append(hudTable);
@@ -392,7 +397,7 @@ export class UI {
     headerTop.className = 'header-top';
     headerTop.append(logoCard, statusCard);
 
-    this.headerRoot.append(headerTop, utilityRow, this.mobileActionsEl, this.musicModalEl);
+    this.headerRoot.append(headerTop, utilityRow, this.mobileActionsEl, this.mobileAbilityDockEl, this.musicModalEl);
 
     this.buildPanel = document.createElement('div');
     this.buildPanel.className = 'panel build-panel';
@@ -884,15 +889,13 @@ export class UI {
     this.panelLayoutKey = nextLayoutKey;
 
     if (mobileLayout) {
-      if (hasSelectedTower) {
-        this.sidebarRoot.append(this.selectedPanel, this.abilityPanel, this.buildPanel);
-        return;
-      }
-
-      this.sidebarRoot.append(this.abilityPanel, this.buildPanel, this.selectedPanel);
+      this.abilityPanel.classList.add('mobile-compact');
+      this.mobileAbilityDockEl.append(this.abilityPanel);
+      this.sidebarRoot.append(this.selectedPanel, this.buildPanel);
       return;
     }
 
+    this.abilityPanel.classList.remove('mobile-compact');
     this.sidebarRoot.append(this.buildPanel, this.selectedPanel, this.abilityPanel);
   }
 }
