@@ -1639,6 +1639,10 @@ button:disabled {
     gap: 8px;
   }
 
+  .ability-panel {
+    margin-top: 0;
+  }
+
   .build-panel {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1665,6 +1669,20 @@ button:disabled {
 
   .selected-panel {
     min-height: 0;
+  }
+
+  .ability-btn {
+    min-height: 60px;
+    padding: 7px 8px;
+  }
+
+  .ability-name {
+    font-size: 0.84rem;
+  }
+
+  .ability-desc,
+  .ability-state {
+    font-size: 0.7rem;
   }
 
   .logo-card {

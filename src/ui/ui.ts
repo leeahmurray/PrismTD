@@ -88,7 +88,6 @@ export class UI {
   private abilityPanel: HTMLDivElement;
 
   private mobileAbilityDockEl: HTMLDivElement;
-
   private buildPanel: HTMLDivElement;
 
   private selectedPanel: HTMLDivElement;
