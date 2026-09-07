@@ -85,6 +85,10 @@ export class UI {
 
   private abilityButtons: Record<AbilityKind, HTMLButtonElement>;
 
+  private abilityStateEls = {} as Record<AbilityKind, HTMLSpanElement>;
+
+  private abilityChargeBars = {} as Record<AbilityKind, HTMLSpanElement[]>;
+
   private abilityPanel: HTMLDivElement;
 
   private mobileAbilityDockEl: HTMLDivElement;
@@ -114,6 +118,12 @@ export class UI {
 
   private visibleToastId: number | null = null;
 
+  private selectedPanelKey = '';
+
+  private musicStateKey = '';
+
+  private mobileLayoutQuery: MediaQueryList;
+
   private mapIndex = 0;
 
   private mode: GameMode = 'standard';
@@ -126,6 +136,7 @@ export class UI {
     this.headerRoot = headerRoot;
     this.sidebarRoot = sidebarRoot;
     this.actions = actions;
+    this.mobileLayoutQuery = window.matchMedia('(max-width: 960px)');
 
     this.headerRoot.innerHTML = '';
     this.sidebarRoot.innerHTML = '';
@@ -525,7 +536,7 @@ export class UI {
     });
 
     this.speedEl.textContent = `${snapshot.speed}x`;
-    const mobileLayout = window.matchMedia('(max-width: 960px)').matches;
+    const mobileLayout = this.mobileLayoutQuery.matches;
     this.reorderPanelsForViewport(snapshot.selectedTowerId !== null, mobileLayout);
     this.pauseEl.textContent = mobileLayout ? (snapshot.paused ? 'RESUME' : 'PAUSE') : (snapshot.paused ? '▶' : '⏸');
     this.pauseEl.title = snapshot.paused ? 'Resume' : 'Pause';
@@ -582,6 +593,11 @@ export class UI {
       </div>
       <span class="ability-state">READY</span>
     `;
+    const stateEl = button.querySelector<HTMLSpanElement>('.ability-state');
+    if (stateEl) {
+      this.abilityStateEls[kind] = stateEl;
+    }
+    this.abilityChargeBars[kind] = Array.from(button.querySelectorAll<HTMLSpanElement>('.ability-charge-bar'));
     this.bindButtonPress(button, () => this.actions.onTriggerAbility(kind));
 
     return button;
@@ -614,6 +630,12 @@ export class UI {
 
   private syncMusicState(): void {
     const state = this.actions.getMusicState();
+    const key = `${state.currentTrackTitle}|${state.isPlaying ? 1 : 0}`;
+    if (this.musicStateKey === key) {
+      return;
+    }
+
+    this.musicStateKey = key;
     this.musicTitleEl.textContent = state.currentTrackTitle;
     this.musicPlayPauseEl.textContent = state.isPlaying ? '⏸' : '▶';
     this.musicPlayPauseEl.title = state.isPlaying ? 'Pause' : 'Play';
@@ -659,8 +681,8 @@ export class UI {
   private renderAbilities(snapshot: GameSnapshot): void {
     for (const abilityState of snapshot.abilities) {
       const button = this.abilityButtons[abilityState.kind];
-      const stateEl = button.querySelector<HTMLSpanElement>('.ability-state');
-      const chargeBars = button.querySelectorAll<HTMLSpanElement>('.ability-charge-bar');
+      const stateEl = this.abilityStateEls[abilityState.kind];
+      const chargeBars = this.abilityChargeBars[abilityState.kind];
       if (!stateEl) {
         continue;
       }
@@ -678,6 +700,30 @@ export class UI {
 
   private renderSelected(snapshot: GameSnapshot, game: Game): void {
     const selectedTower = game.getSelectedTower();
+    const towerSignature = snapshot.towers
+      .map((tower) => `${tower.id}:${tower.kind}:${tower.level}:${tower.targeting}:${tower.x},${tower.y}`)
+      .join('|');
+    const selectedKey = selectedTower
+      ? [
+          'tower',
+          selectedTower.id,
+          selectedTower.kind,
+          selectedTower.level,
+          selectedTower.targeting,
+          snapshot.money,
+          snapshot.activeGlobalDamageBoost > 0 ? 1 : 0,
+          snapshot.activeGlobalRangeBoost > 0 ? 1 : 0,
+          snapshot.activeGlobalFireRateBoost > 0 ? 1 : 0,
+          towerSignature,
+        ].join('|')
+      : snapshot.placingTowerKind
+        ? ['placing', snapshot.placingTowerKind].join('|')
+        : 'empty';
+
+    if (this.selectedPanelKey === selectedKey) {
+      return;
+    }
+    this.selectedPanelKey = selectedKey;
 
     if (!selectedTower && snapshot.placingTowerKind) {
       const base = BALANCE.towers.stats[snapshot.placingTowerKind];

@@ -41,3 +41,26 @@ export function line(
   ctx.moveTo(ax, ay);
   ctx.lineTo(bx, by);
 }
+
+/**
+ * Two-pass fake glow for dynamic strokes (beams, links) that cannot be cached
+ * as sprites: a wide translucent halo under a crisp core. No shadowBlur.
+ */
+export function softGlowStroke(
+  ctx: CanvasRenderingContext2D,
+  color: string,
+  width: number,
+  alpha = 1,
+  glow = 10,
+): void {
+  ctx.strokeStyle = color;
+  ctx.lineCap = 'round';
+  ctx.globalAlpha = alpha * 0.28;
+  ctx.lineWidth = width + glow * 0.7;
+  ctx.stroke();
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = width;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.lineCap = 'butt';
+}

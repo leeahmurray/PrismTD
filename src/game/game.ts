@@ -9,6 +9,7 @@ import type {
   BonusType,
   Enemy,
   GameSnapshot,
+  MapRouteSnapshot,
   Projectile,
   SupportPreviewSnapshot,
   Toast,
@@ -83,6 +84,8 @@ export class Game {
 
   private enemies: Enemy[] = [];
 
+  private hasDeadEnemies = false;
+
   private towers: Tower[] = [];
 
   private projectiles: Projectile[] = [];
@@ -139,6 +142,10 @@ export class Game {
 
   private kamikazeStarted = false;
 
+  private routeSnapshotCache: { paths: PathData[]; routes: MapRouteSnapshot[] } | null = null;
+
+  private mapNameCache: { maps: MapDefinition[]; names: string[] } | null = null;
+
   private idCounters = {
     enemy: 1,
     tower: 1,
@@ -157,6 +164,7 @@ export class Game {
 
   restart(): void {
     this.enemies = [];
+    this.hasDeadEnemies = false;
     this.towers = [];
     this.projectiles = [];
     this.beams = [];
@@ -194,14 +202,14 @@ export class Game {
       mode: this.mode,
       mapIndex: this.mapIndex,
       mapName: mapDef.name,
-      mapNames: this.maps.map((map) => map.name),
+      mapNames: this.getMapNames(),
       width: BALANCE.map.width,
       height: BALANCE.map.height,
       gridSize: this.gridSize,
       cols: this.cols,
       rows: this.rows,
       pathPoints: this.paths[0]?.points ?? [],
-      routes: this.paths.map((path) => ({ points: path.points })),
+      routes: this.getRouteSnapshots(),
       supportPreviews: this.getSupportPreviews(),
       pathCells: this.pathCellList,
       pathLength: this.paths[0]?.totalLength ?? 0,
@@ -270,7 +278,9 @@ export class Game {
     this.updateWaveSpawning(scaledDt);
     this.updateEnemies(scaledDt);
     this.updateTowers(scaledDt);
+    this.compactDeadEnemies();
     this.updateProjectiles(scaledDt);
+    this.compactDeadEnemies();
     this.updateBeams(scaledDt);
     this.updateBonusOrb(scaledDt);
 
@@ -404,9 +414,11 @@ export class Game {
       for (const enemy of [...this.enemies]) {
         this.applyDamage(enemy, BALANCE.abilities.stats.ionBurst.damage);
       }
+      this.compactDeadEnemies();
     } else {
       for (const enemy of this.enemies) {
         enemy.distance = Math.max(0, enemy.distance - BALANCE.abilities.stats.phaseWarp.pushDistance);
+        this.syncEnemyPosition(enemy);
         enemy.slowFactor = clamp(1 - BALANCE.abilities.stats.phaseWarp.slowPct, 0.15, 1);
         enemy.slowRemaining = Math.max(enemy.slowRemaining, BALANCE.abilities.stats.phaseWarp.slowDuration);
         enemy.hitFlash = 1;
@@ -766,12 +778,18 @@ export class Game {
     const hpScale = BALANCE.enemies.hpMultiplierPerWave ** (kind === 'boss' ? waveIndex * 0.72 : waveIndex);
     const speedScale = BALANCE.enemies.speedMultiplierPerWave ** (kind === 'boss' ? waveIndex * 0.3 : waveIndex);
     const bountyScale = BALANCE.enemies.bountyMultiplierPerWave ** waveIndex;
+    const path = this.paths[routeIndex] ?? this.paths[0];
+    const pos = pointAtDistance(path, distance);
     return {
       id: this.idCounters.enemy++,
       kind,
       routeIndex,
       waveIndex,
       distance,
+      x: pos.x,
+      y: pos.y,
+      prevX: pos.x,
+      prevY: pos.y,
       hp: Math.round(base.hp * hpScale),
       maxHp: Math.round(base.hp * hpScale),
       speed: base.speed * speedScale,
@@ -814,21 +832,35 @@ export class Game {
       }
 
       enemy.hitFlash = Math.max(0, enemy.hitFlash - dt * 7);
+      enemy.prevX = enemy.x;
+      enemy.prevY = enemy.y;
       enemy.distance += enemy.speed * enemy.slowFactor * dt;
 
       const enemyPath = this.paths[enemy.routeIndex] ?? this.paths[0];
+      let wrapped = false;
       if (enemy.distance >= enemyPath.totalLength) {
         const loops = Math.max(1, Math.floor(enemy.distance / enemyPath.totalLength));
         this.lives -= loops * livesLostForEnemy(enemy.kind);
         enemy.distance -= enemyPath.totalLength * loops;
         enemy.distance = Math.max(0, enemy.distance);
         enemy.hitFlash = 1;
+        wrapped = true;
+      }
+
+      const pos = pointAtDistance(enemyPath, enemy.distance);
+      enemy.x = pos.x;
+      enemy.y = pos.y;
+      if (wrapped) {
+        // Teleported back to the start: do not interpolate across the map.
+        enemy.prevX = pos.x;
+        enemy.prevY = pos.y;
       }
 
       survivors.push(enemy);
     }
 
     this.enemies = survivors;
+    this.hasDeadEnemies = false;
   }
 
   private updateTowers(dt: number): void {
@@ -839,12 +871,6 @@ export class Game {
       return;
     }
 
-    const enemyPositions = new Map<number, Vec2>();
-    for (const enemy of this.enemies) {
-      const enemyPath = this.paths[enemy.routeIndex] ?? this.paths[0];
-      enemyPositions.set(enemy.id, pointAtDistance(enemyPath, enemy.distance));
-    }
-
     for (const tower of this.towers) {
       const stats = this.getTowerStats(tower);
       tower.cooldown -= dt;
@@ -853,26 +879,28 @@ export class Game {
         continue;
       }
 
-      const target = this.findTargetForTower(tower, stats.range, enemyPositions);
+      const target = this.findTargetForTower(tower, stats.range);
       if (!target) {
         continue;
       }
 
-      const targetPos = enemyPositions.get(target.id)!;
+      const targetPos: Vec2 = { x: target.x, y: target.y };
 
       if (tower.kind === 'pulse') {
         this.spawnBeam({ x: tower.x, y: tower.y }, targetPos, 'pulse');
         this.applyHit(target, stats.damage, 0, 0, 0, 0, 0, targetPos);
       } else if (tower.kind === 'chain') {
-        this.applyChainStrike(tower, target, targetPos, stats.damage, enemyPositions);
+        this.applyChainStrike(tower, target, targetPos, stats.damage);
       } else if (tower.kind === 'laser') {
-        this.applyLaserStrike(tower, targetPos, stats.damage, enemyPositions);
+        this.applyLaserStrike(tower, targetPos, stats.damage);
       } else {
         this.projectiles.push({
           id: this.idCounters.projectile++,
           kind: tower.kind,
           x: tower.x,
           y: tower.y,
+          prevX: tower.x,
+          prevY: tower.y,
           targetId: target.id,
           speed: BALANCE.towers.stats[tower.kind].projectileSpeed,
           damage: stats.damage,
@@ -910,10 +938,10 @@ export class Game {
         continue;
       }
 
-      const targetPath = this.paths[target.routeIndex] ?? this.paths[0];
-      const targetPos = pointAtDistance(targetPath, target.distance);
-      const dx = targetPos.x - projectile.x;
-      const dy = targetPos.y - projectile.y;
+      projectile.prevX = projectile.x;
+      projectile.prevY = projectile.y;
+      const dx = target.x - projectile.x;
+      const dy = target.y - projectile.y;
       const distance = Math.hypot(dx, dy);
       const step = projectile.speed * dt;
 
@@ -926,7 +954,7 @@ export class Game {
           projectile.slowDuration,
           projectile.dotDamagePerSecond,
           projectile.dotDuration,
-          targetPos,
+          target,
         );
         projectile.alive = false;
       } else {
@@ -955,7 +983,6 @@ export class Game {
     initialTarget: Enemy,
     initialPos: Vec2,
     baseDamage: number,
-    enemyPositions: Map<number, Vec2>,
   ): void {
     const hitIds = new Set<number>();
     let currentTarget: Enemy | null = initialTarget;
@@ -977,7 +1004,7 @@ export class Game {
         break;
       }
 
-      const next = this.findClosestChainTarget(currentPos, hitIds, enemyPositions);
+      const next = this.findClosestChainTarget(currentPos, hitIds);
       if (!next) {
         break;
       }
@@ -991,7 +1018,6 @@ export class Game {
   private findClosestChainTarget(
     fromPos: Vec2,
     hitIds: Set<number>,
-    enemyPositions: Map<number, Vec2>,
   ): { enemy: Enemy; pos: Vec2 } | null {
     let selected: Enemy | null = null;
     let selectedPos: Vec2 | null = null;
@@ -1002,15 +1028,13 @@ export class Game {
         continue;
       }
 
-      const enemyPath = this.paths[enemy.routeIndex] ?? this.paths[0];
-      const pos = enemyPositions.get(enemy.id) ?? pointAtDistance(enemyPath, enemy.distance);
-      const distance = Math.hypot(pos.x - fromPos.x, pos.y - fromPos.y);
+      const distance = Math.hypot(enemy.x - fromPos.x, enemy.y - fromPos.y);
       if (distance > CHAIN_JUMP_RANGE || distance >= bestDistance) {
         continue;
       }
 
       selected = enemy;
-      selectedPos = pos;
+      selectedPos = { x: enemy.x, y: enemy.y };
       bestDistance = distance;
     }
 
@@ -1043,9 +1067,11 @@ export class Game {
   ): void {
     if (splashRadius > 0) {
       for (const enemy of this.enemies) {
-        const enemyPath = this.paths[enemy.routeIndex] ?? this.paths[0];
-        const pos = pointAtDistance(enemyPath, enemy.distance);
-        if (Math.hypot(pos.x - hitPos.x, pos.y - hitPos.y) <= splashRadius) {
+        if (!enemy.alive) {
+          continue;
+        }
+
+        if (Math.hypot(enemy.x - hitPos.x, enemy.y - hitPos.y) <= splashRadius) {
           this.applyDamage(enemy, damage);
         }
       }
@@ -1075,6 +1101,7 @@ export class Game {
     }
     if (enemy.hp <= 0) {
       enemy.alive = false;
+      this.hasDeadEnemies = true;
       this.awardEarnedMoney(enemy.bounty);
       this.score += Math.max(1, Math.floor(enemy.bounty * 4));
       this.addAbilityProgress('overclock', 1);
@@ -1082,15 +1109,12 @@ export class Game {
         this.spawnSplitPetals(enemy.routeIndex, enemy.waveIndex, enemy.distance);
       }
     }
-
-    this.enemies = this.enemies.filter((candidate) => candidate.alive);
   }
 
   private applyLaserStrike(
     tower: Tower,
     targetPos: Vec2,
     damage: number,
-    enemyPositions: Map<number, Vec2>,
   ): void {
     const horizontal = Math.abs(targetPos.x - tower.x) >= Math.abs(targetPos.y - tower.y);
     const beamFrom = horizontal ? { x: 0, y: tower.y } : { x: tower.x, y: 0 };
@@ -1099,12 +1123,11 @@ export class Game {
     this.spawnBeam(beamFrom, beamTo, 'laser');
 
     for (const enemy of this.enemies) {
-      const pos = enemyPositions.get(enemy.id);
-      if (!pos) {
+      if (!enemy.alive) {
         continue;
       }
 
-      const distanceToLine = horizontal ? Math.abs(pos.y - tower.y) : Math.abs(pos.x - tower.x);
+      const distanceToLine = horizontal ? Math.abs(enemy.y - tower.y) : Math.abs(enemy.x - tower.x);
       if (distanceToLine > LASER_LINE_HALF_WIDTH) {
         continue;
       }
@@ -1116,18 +1139,16 @@ export class Game {
   private findTargetForTower(
     tower: Tower,
     range: number,
-    enemyPositions: Map<number, Vec2>,
   ): Enemy | null {
     let selected: Enemy | null = null;
     let selectedValue = tower.targeting === 'first' ? -Infinity : Infinity;
 
     for (const enemy of this.enemies) {
-      const pos = enemyPositions.get(enemy.id);
-      if (!pos) {
+      if (!enemy.alive) {
         continue;
       }
 
-      const dist = Math.hypot(pos.x - tower.x, pos.y - tower.y);
+      const dist = Math.hypot(enemy.x - tower.x, enemy.y - tower.y);
       if (dist > range) {
         continue;
       }
@@ -1144,6 +1165,41 @@ export class Game {
     }
 
     return selected;
+  }
+
+  private syncEnemyPosition(enemy: Enemy): void {
+    const path = this.paths[enemy.routeIndex] ?? this.paths[0];
+    const pos = pointAtDistance(path, enemy.distance);
+    enemy.x = pos.x;
+    enemy.y = pos.y;
+    enemy.prevX = pos.x;
+    enemy.prevY = pos.y;
+  }
+
+  private getRouteSnapshots(): MapRouteSnapshot[] {
+    if (!this.routeSnapshotCache || this.routeSnapshotCache.paths !== this.paths) {
+      this.routeSnapshotCache = {
+        paths: this.paths,
+        routes: this.paths.map((path) => ({ points: path.points })),
+      };
+    }
+    return this.routeSnapshotCache.routes;
+  }
+
+  private getMapNames(): string[] {
+    if (!this.mapNameCache || this.mapNameCache.maps !== this.maps) {
+      this.mapNameCache = { maps: this.maps, names: this.maps.map((map) => map.name) };
+    }
+    return this.mapNameCache.names;
+  }
+
+  private compactDeadEnemies(): void {
+    if (!this.hasDeadEnemies) {
+      return;
+    }
+
+    this.enemies = this.enemies.filter((enemy) => enemy.alive);
+    this.hasDeadEnemies = false;
   }
 
   private checkWaveCompletion(): void {

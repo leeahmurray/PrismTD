@@ -1,7 +1,7 @@
 import { BALANCE, type EnemyKind, type TowerKind } from '../balance';
-import { createPath, pointAtDistance, type PathData } from '../game/path';
 import type { GameSnapshot } from '../game/types';
-import { glowFill, glowStroke } from './neon';
+import { glowFill, glowStroke, softGlowStroke } from './neon';
+import { drawSprite, getSprite } from './sprites';
 
 const COLORS = {
   bg: '#05060A',
@@ -33,15 +33,17 @@ const COLORS = {
   tile: '#0B0F1A',
 } as const;
 
+let mobileRenderQuery: MediaQueryList | null = null;
+
 function useMobileRenderMode(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
     return false;
   }
 
-  return window.matchMedia('(max-width: 960px), (pointer: coarse)').matches;
+  mobileRenderQuery ??= window.matchMedia('(max-width: 960px), (pointer: coarse)');
+  return mobileRenderQuery.matches;
 }
 
-const routePathCache = new WeakMap<ReadonlyArray<{ x: number; y: number }>, PathData>();
 const pathCellSetCache = new WeakMap<ReadonlyArray<string>, Set<string>>();
 
 let staticBoardCache:
@@ -53,17 +55,6 @@ let staticBoardCache:
       canvas: HTMLCanvasElement;
     }
   | null = null;
-
-function getCachedRoutePath(points: ReadonlyArray<{ x: number; y: number }>): PathData {
-  const cached = routePathCache.get(points);
-  if (cached) {
-    return cached;
-  }
-
-  const next = createPath(points);
-  routePathCache.set(points, next);
-  return next;
-}
 
 function getCachedPathCellSet(pathCells: ReadonlyArray<string>): Set<string> {
   const cached = pathCellSetCache.get(pathCells);
@@ -290,18 +281,13 @@ function drawEntryExitMarkers(ctx: CanvasRenderingContext2D, snapshot: GameSnaps
   }
 }
 
-function drawEnemy(
-  ctx: CanvasRenderingContext2D,
-  kind: EnemyKind,
-  x: number,
-  y: number,
-  hp: number,
-  maxHp: number,
-  hitFlash: number,
-): void {
+const ENEMY_SPRITE_SIZE = 72;
+const TOWER_SPRITE_SIZE = 64;
+const PROJECTILE_SPRITE_SIZE = 32;
+
+function drawEnemyShape(ctx: CanvasRenderingContext2D, kind: EnemyKind, x: number, y: number): void {
   const color = enemyColor(kind);
 
-  ctx.save();
   if (kind === 'runner') {
     ctx.beginPath();
     ctx.rect(x - 6, y - 6, 12, 12);
@@ -364,23 +350,46 @@ function drawEnemy(
     glowStroke(ctx, color, 1.4, 0.9, 7);
   }
 
-  const flashRadius = kind === 'boss' ? 22 : 14;
+}
+
+function enemySprite(kind: EnemyKind): HTMLCanvasElement {
+  return getSprite(`enemy:${kind}`, ENEMY_SPRITE_SIZE, (sctx, cx, cy) => drawEnemyShape(sctx, kind, cx, cy));
+}
+
+function hitFlashSprite(radius: number): HTMLCanvasElement {
+  const size = Math.ceil((radius + 24) * 2);
+  return getSprite(`hit-flash:${radius}`, size, (sctx, cx, cy) => {
+    sctx.beginPath();
+    sctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    glowFill(sctx, '#ffffff', 1, 16);
+  });
+}
+
+function drawEnemy(
+  ctx: CanvasRenderingContext2D,
+  kind: EnemyKind,
+  x: number,
+  y: number,
+  hp: number,
+  maxHp: number,
+  hitFlash: number,
+): void {
+  drawSprite(ctx, enemySprite(kind), x, y);
+
   if (hitFlash > 0) {
-    ctx.beginPath();
-    ctx.arc(x, y, flashRadius, 0, Math.PI * 2);
-    glowFill(ctx, '#ffffff', 0.16 * hitFlash, 16);
+    ctx.globalAlpha = 0.16 * hitFlash;
+    drawSprite(ctx, hitFlashSprite(kind === 'boss' ? 22 : 14), x, y);
+    ctx.globalAlpha = 1;
   }
 
-  const hpRatio = Math.max(0, hp / maxHp);
+  const hpRatio = Math.max(0, Math.min(1, hp / maxHp));
   const hpBarWidth = kind === 'boss' ? 32 : 20;
   const hpBarX = x - hpBarWidth / 2;
   const hpBarY = y - (kind === 'boss' ? 22 : 14);
-  ctx.beginPath();
-  ctx.rect(hpBarX, hpBarY, hpBarWidth, 4);
-  glowStroke(ctx, COLORS.hpBg, 1.5, 1, 0);
-  ctx.beginPath();
-  ctx.rect(hpBarX, hpBarY, hpBarWidth * hpRatio, 4);
-  glowStroke(ctx, COLORS.hp, 1.5, 0.9, 6);
+  ctx.fillStyle = COLORS.hpBg;
+  ctx.fillRect(hpBarX - 1, hpBarY - 1, hpBarWidth + 2, 6);
+  ctx.fillStyle = COLORS.hp;
+  ctx.fillRect(hpBarX, hpBarY, hpBarWidth * hpRatio, 4);
 
   if (kind === 'boss') {
     ctx.textAlign = 'center';
@@ -388,19 +397,11 @@ function drawEnemy(
     ctx.fillStyle = '#ffe3bf';
     ctx.fillText('BOSS', x, y - 28);
   }
-  ctx.restore();
 }
 
-function drawTower(
-  ctx: CanvasRenderingContext2D,
-  kind: TowerKind,
-  x: number,
-  y: number,
-  selected: boolean,
-): void {
+function drawTowerShape(ctx: CanvasRenderingContext2D, kind: TowerKind, x: number, y: number): void {
   const color = towerColor(kind);
 
-  ctx.save();
   if (kind === 'pulse') {
     ctx.beginPath();
     ctx.arc(x, y, 9, 0, Math.PI * 2);
@@ -495,12 +496,39 @@ function drawTower(
     glowFill(ctx, color, 0.65, 8);
   }
 
+}
+
+function towerSprite(kind: TowerKind): HTMLCanvasElement {
+  return getSprite(`tower:${kind}`, TOWER_SPRITE_SIZE, (sctx, cx, cy) => drawTowerShape(sctx, kind, cx, cy));
+}
+
+function selectedRingSprite(): HTMLCanvasElement {
+  return getSprite('tower:selected-ring', TOWER_SPRITE_SIZE, (sctx, cx, cy) => {
+    sctx.beginPath();
+    sctx.arc(cx, cy, 16, 0, Math.PI * 2);
+    glowStroke(sctx, COLORS.selected, 1.4, 0.8, 8);
+  });
+}
+
+function projectileSprite(kind: TowerKind, mobile: boolean): HTMLCanvasElement {
+  return getSprite(`projectile:${kind}:${mobile ? 'm' : 'd'}`, PROJECTILE_SPRITE_SIZE, (sctx, cx, cy) => {
+    sctx.beginPath();
+    sctx.arc(cx, cy, kind === 'nova' ? 4 : 3, 0, Math.PI * 2);
+    glowFill(sctx, towerColor(kind), 0.85, mobile ? 4 : 10);
+  });
+}
+
+function drawTower(
+  ctx: CanvasRenderingContext2D,
+  kind: TowerKind,
+  x: number,
+  y: number,
+  selected: boolean,
+): void {
+  drawSprite(ctx, towerSprite(kind), x, y);
   if (selected) {
-    ctx.beginPath();
-    ctx.arc(x, y, 16, 0, Math.PI * 2);
-    glowStroke(ctx, COLORS.selected, 1.4, 0.8, 8);
+    drawSprite(ctx, selectedRingSprite(), x, y);
   }
-  ctx.restore();
 }
 
 function drawSupportPreviews(
@@ -560,9 +588,9 @@ export function render(
   ctx: CanvasRenderingContext2D,
   snapshot: GameSnapshot,
   time: number,
+  interpolation = 1,
 ): void {
   const mobileRenderMode = useMobileRenderMode();
-  const routePaths = snapshot.routes.map((route) => getCachedRoutePath(route.points));
   ctx.clearRect(0, 0, snapshot.width, snapshot.height);
 
   const staticBoard = getStaticBoardCanvas(snapshot, mobileRenderMode);
@@ -615,16 +643,15 @@ export function render(
   }
 
   for (const enemy of snapshot.enemies) {
-    const enemyPath = routePaths[enemy.routeIndex] ?? routePaths[0];
-    const pos = pointAtDistance(enemyPath, enemy.distance);
-    drawEnemy(ctx, enemy.kind, pos.x, pos.y, enemy.hp, enemy.maxHp, enemy.hitFlash);
+    const x = enemy.prevX + (enemy.x - enemy.prevX) * interpolation;
+    const y = enemy.prevY + (enemy.y - enemy.prevY) * interpolation;
+    drawEnemy(ctx, enemy.kind, x, y, enemy.hp, enemy.maxHp, enemy.hitFlash);
   }
 
   for (const projectile of snapshot.projectiles) {
-    const color = towerColor(projectile.kind);
-    ctx.beginPath();
-    ctx.arc(projectile.x, projectile.y, projectile.kind === 'nova' ? 4 : 3, 0, Math.PI * 2);
-    glowFill(ctx, color, 0.85, mobileRenderMode ? 4 : 10);
+    const x = projectile.prevX + (projectile.x - projectile.prevX) * interpolation;
+    const y = projectile.prevY + (projectile.y - projectile.prevY) * interpolation;
+    drawSprite(ctx, projectileSprite(projectile.kind, mobileRenderMode), x, y);
   }
 
   for (const beam of snapshot.beams) {
@@ -633,7 +660,7 @@ export function render(
     ctx.beginPath();
     ctx.moveTo(beam.from.x, beam.from.y);
     ctx.lineTo(beam.to.x, beam.to.y);
-    glowStroke(ctx, color, beam.kind === 'chain' ? 2.2 : 1.6, 0.8 * alpha, mobileRenderMode ? 4 : 10);
+    softGlowStroke(ctx, color, beam.kind === 'chain' ? 2.2 : 1.6, 0.8 * alpha, mobileRenderMode ? 4 : 10);
   }
 
   if (snapshot.placingTowerKind && snapshot.placementPos) {

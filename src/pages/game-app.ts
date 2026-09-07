@@ -71,6 +71,7 @@ export function mountGameApp(app: HTMLDivElement): void {
   const renderContext = ctx;
 
   const game = new Game();
+  const perf = createDevPerfProbe(game, renderContext);
 
 interface MusicTrack {
   id: string;
@@ -537,19 +538,31 @@ window.addEventListener('contextmenu', (event) => {
   let lastTime = performance.now();
   let accumulator = 0;
   const fixedStep = 1 / 60;
+  const maxCatchUpSteps = 5;
   let lastOutcome: 'victory' | 'defeat' | null = null;
   let lastCompletedWaves = 0;
   let lastBonusOrbVisible = false;
+  let lastUiUpdate = 0;
+  const uiUpdateIntervalMs = 1000 / 20;
 
   function frame(now: number): void {
     const rawDelta = (now - lastTime) / 1000;
     lastTime = now;
     accumulator += Math.min(rawDelta, 0.25);
 
+    // If a frame ran long, catch up by at most a few steps. Beyond that the
+    // game slows down slightly rather than spiralling into ever longer frames.
+    if (accumulator > fixedStep * maxCatchUpSteps) {
+      accumulator = fixedStep * maxCatchUpSteps;
+    }
+
+    const updateStart = performance.now();
     while (accumulator >= fixedStep) {
       game.update(fixedStep);
       accumulator -= fixedStep;
     }
+    const updateMs = performance.now() - updateStart;
+    const interpolation = accumulator / fixedStep;
 
     const snapshot = game.getSnapshot();
 
@@ -573,11 +586,83 @@ window.addEventListener('contextmenu', (event) => {
       lastOutcome = outcome;
     }
 
-    render(renderContext, snapshot, now);
-    ui.update(snapshot, game);
+    const renderStart = performance.now();
+    render(renderContext, snapshot, now, interpolation);
+    const renderMs = performance.now() - renderStart;
+    if (now - lastUiUpdate >= uiUpdateIntervalMs) {
+      ui.update(snapshot, game);
+      lastUiUpdate = now;
+    }
+    perf?.record(rawDelta * 1000, updateMs, renderMs, snapshot.enemies.length);
 
     requestAnimationFrame(frame);
   }
 
   requestAnimationFrame(frame);
+}
+
+interface PerfProbe {
+  record: (frameMs: number, updateMs: number, renderMs: number, enemies: number) => void;
+}
+
+/**
+ * Dev-only performance probe. Exposes the live game, renderer and rolling frame
+ * timings on `window.__prismtd` so they can be inspected from the console.
+ * Compiled out of production builds.
+ */
+function createDevPerfProbe(game: Game, ctx: CanvasRenderingContext2D): PerfProbe | null {
+  if (!import.meta.env.DEV) {
+    return null;
+  }
+
+  const capacity = 600;
+  const frameMs = new Float64Array(capacity);
+  const updateMs = new Float64Array(capacity);
+  const renderMs = new Float64Array(capacity);
+  const enemyCounts = new Float64Array(capacity);
+  let cursor = 0;
+  let filled = 0;
+
+  const percentile = (values: Float64Array, count: number, p: number): number => {
+    const sorted = Array.from(values.subarray(0, count)).sort((a, b) => a - b);
+    return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0;
+  };
+  const mean = (values: Float64Array, count: number): number => {
+    let total = 0;
+    for (let i = 0; i < count; i += 1) total += values[i];
+    return count > 0 ? total / count : 0;
+  };
+
+  const probe = {
+    game,
+    ctx,
+    render,
+    record(frame: number, update: number, renderTime: number, enemies: number): void {
+      frameMs[cursor] = frame;
+      updateMs[cursor] = update;
+      renderMs[cursor] = renderTime;
+      enemyCounts[cursor] = enemies;
+      cursor = (cursor + 1) % capacity;
+      filled = Math.min(capacity, filled + 1);
+    },
+    reset(): void {
+      cursor = 0;
+      filled = 0;
+    },
+    summary(): Record<string, number> {
+      return {
+        samples: filled,
+        enemiesAvg: Math.round(mean(enemyCounts, filled)),
+        enemiesMax: Math.max(0, ...Array.from(enemyCounts.subarray(0, filled))),
+        frameAvgMs: +mean(frameMs, filled).toFixed(2),
+        frameP95Ms: +percentile(frameMs, filled, 0.95).toFixed(2),
+        updateAvgMs: +mean(updateMs, filled).toFixed(2),
+        renderAvgMs: +mean(renderMs, filled).toFixed(2),
+        renderP95Ms: +percentile(renderMs, filled, 0.95).toFixed(2),
+      };
+    },
+  };
+
+  (window as unknown as { __prismtd: typeof probe }).__prismtd = probe;
+  return probe;
 }
