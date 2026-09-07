@@ -13,6 +13,12 @@ export interface Enemy {
   routeIndex: number;
   waveIndex: number;
   distance: number;
+  /** World position along the route, refreshed once per simulation tick. */
+  x: number;
+  y: number;
+  /** Position at the previous tick, used for render interpolation. */
+  prevX: number;
+  prevY: number;
   hp: number;
   maxHp: number;
   speed: number;
@@ -40,6 +46,8 @@ export interface Projectile {
   kind: TowerKind;
   x: number;
   y: number;
+  prevX: number;
+  prevY: number;
   targetId: number;
   speed: number;
   damage: number;
