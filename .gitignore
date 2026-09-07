@@ -24,3 +24,6 @@ public/audio/bgm/Analog Three.wav
 *.njsproj
 *.sln
 *.sw?
+
+# Uncompressed music masters stay local; the game ships the .mp3 encodes
+public/audio/bgm/*.wav

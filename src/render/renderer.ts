@@ -281,7 +281,15 @@ function drawEntryExitMarkers(ctx: CanvasRenderingContext2D, snapshot: GameSnaps
   }
 }
 
-const ENEMY_SPRITE_SIZE = 72;
+/** Sprite canvas edge per enemy kind: shape extent plus glow radius, rounded up. */
+const ENEMY_SPRITE_SIZES: Record<EnemyKind, number> = {
+  runner: 40,
+  tank: 48,
+  swarm: 40,
+  blossom: 40,
+  petal: 32,
+  boss: 64,
+};
 const TOWER_SPRITE_SIZE = 64;
 const PROJECTILE_SPRITE_SIZE = 32;
 
@@ -353,7 +361,7 @@ function drawEnemyShape(ctx: CanvasRenderingContext2D, kind: EnemyKind, x: numbe
 }
 
 function enemySprite(kind: EnemyKind): HTMLCanvasElement {
-  return getSprite(`enemy:${kind}`, ENEMY_SPRITE_SIZE, (sctx, cx, cy) => drawEnemyShape(sctx, kind, cx, cy));
+  return getSprite(`enemy:${kind}`, ENEMY_SPRITE_SIZES[kind], (sctx, cx, cy) => drawEnemyShape(sctx, kind, cx, cy));
 }
 
 function hitFlashSprite(radius: number): HTMLCanvasElement {
@@ -382,14 +390,18 @@ function drawEnemy(
     ctx.globalAlpha = 1;
   }
 
-  const hpRatio = Math.max(0, Math.min(1, hp / maxHp));
-  const hpBarWidth = kind === 'boss' ? 32 : 20;
-  const hpBarX = x - hpBarWidth / 2;
-  const hpBarY = y - (kind === 'boss' ? 22 : 14);
-  ctx.fillStyle = COLORS.hpBg;
-  ctx.fillRect(hpBarX - 1, hpBarY - 1, hpBarWidth + 2, 6);
-  ctx.fillStyle = COLORS.hp;
-  ctx.fillRect(hpBarX, hpBarY, hpBarWidth * hpRatio, 4);
+  // Only damaged enemies show a health bar. In looping modes thousands of
+  // untouched enemies can be on screen at once; two fills each adds up.
+  if (hp < maxHp || kind === 'boss') {
+    const hpRatio = Math.max(0, Math.min(1, hp / maxHp));
+    const hpBarWidth = kind === 'boss' ? 32 : 20;
+    const hpBarX = x - hpBarWidth / 2;
+    const hpBarY = y - (kind === 'boss' ? 22 : 14);
+    ctx.fillStyle = COLORS.hpBg;
+    ctx.fillRect(hpBarX - 1, hpBarY - 1, hpBarWidth + 2, 6);
+    ctx.fillStyle = COLORS.hp;
+    ctx.fillRect(hpBarX, hpBarY, hpBarWidth * hpRatio, 4);
+  }
 
   if (kind === 'boss') {
     ctx.textAlign = 'center';
