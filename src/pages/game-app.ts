@@ -88,12 +88,12 @@ function setupBackgroundMusic(): {
   getState: () => { isPlaying: boolean; currentTrackTitle: string; tracks: Array<{ id: string; title: string }> };
 } {
   const tracks: MusicTrack[] = [
-    { id: 'fields', title: 'Fields of Our Mind', file: '/audio/bgm/FIleds of Our Mind.wav' },
-    { id: 'analog-one', title: 'Analog One', file: '/audio/bgm/Analog One.wav' },
-    { id: 'analog-two', title: 'Analog Two', file: '/audio/bgm/Analog Two.mp3' },
-    { id: 'analog-three', title: 'Analog Three', file: '/audio/bgm/Analog Three.mp3' },
-    { id: 'sunset', title: 'Sunset', file: '/audio/bgm/Sunset.wav' },
-    { id: 'watercaves', title: 'WaterCaves', file: '/audio/bgm/WaterCaves.wav' },
+    { id: 'fields', title: 'Fields of Our Mind', file: '/audio/bgm/fields-of-our-mind.mp3' },
+    { id: 'analog-one', title: 'Analog One', file: '/audio/bgm/analog-one.mp3' },
+    { id: 'analog-two', title: 'Analog Two', file: '/audio/bgm/analog-two.mp3' },
+    { id: 'analog-three', title: 'Analog Three', file: '/audio/bgm/analog-three.mp3' },
+    { id: 'sunset', title: 'Sunset', file: '/audio/bgm/sunset.mp3' },
+    { id: 'watercaves', title: 'WaterCaves', file: '/audio/bgm/watercaves.mp3' },
   ];
   let trackIndex = 0;
   const music = new Audio(encodeURI(tracks[trackIndex].file));
@@ -218,7 +218,7 @@ function setupBackgroundMusic(): {
 
 const musicController = setupBackgroundMusic();
 
-function setupUiSfx(): {
+interface UiSfx {
   playHover: () => void;
   playPlace: () => void;
   playAction: () => void;
@@ -231,86 +231,94 @@ function setupUiSfx(): {
   playPowerupClaimed: () => void;
   playVictory: () => void;
   playDefeat: () => void;
-} {
-  const hoverSound = new Audio('/audio/sfx/menu_13.wav');
-  hoverSound.preload = 'auto';
-  hoverSound.volume = 0.35;
+}
 
-  const placeSound = new Audio('/audio/sfx/menu_6.wav');
-  placeSound.preload = 'auto';
-  placeSound.volume = 0.45;
+/**
+ * Sound effects through Web Audio. Each clip is fetched and decoded once into
+ * an AudioBuffer; playing it is a cheap buffer-source node. The previous
+ * approach cloned an <audio> element per play, which re-parsed the WAV and
+ * allocated a full media pipeline every time, and is notoriously heavy on iOS.
+ */
+function setupUiSfx(): UiSfx {
+  const clips = {
+    hover: { file: '/audio/sfx/menu_13.wav', volume: 0.35 },
+    place: { file: '/audio/sfx/menu_6.wav', volume: 0.45 },
+    action: { file: '/audio/sfx/menu_26.wav', volume: 0.4 },
+    off: { file: '/audio/sfx/menu_23.wav', volume: 0.42 },
+    on: { file: '/audio/sfx/menu_1.wav', volume: 0.42 },
+    mapCycle: { file: '/audio/sfx/menu_27.wav', volume: 0.4 },
+    insufficient: { file: '/audio/sfx/menu_19.wav', volume: 0.45 },
+    money: { file: '/audio/sfx/money_1.wav', volume: 0.5 },
+    powerupAvailable: { file: '/audio/sfx/powerup.wav', volume: 0.5 },
+    powerupClaimed: { file: '/audio/sfx/powerupclaimed.wav', volume: 0.5 },
+    victory: { file: '/audio/sfx/victory.wav', volume: 0.55 },
+    defeat: { file: '/audio/sfx/defeat.wav', volume: 0.55 },
+  } as const;
+  type ClipKey = keyof typeof clips;
 
-  const actionSound = new Audio('/audio/sfx/menu_26.wav');
-  actionSound.preload = 'auto';
-  actionSound.volume = 0.4;
+  const AudioContextCtor =
+    window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  const context = AudioContextCtor ? new AudioContextCtor() : null;
+  const buffers = new Map<ClipKey, AudioBuffer>();
 
-  const offSound = new Audio('/audio/sfx/menu_23.wav');
-  offSound.preload = 'auto';
-  offSound.volume = 0.42;
-
-  const onSound = new Audio('/audio/sfx/menu_1.wav');
-  onSound.preload = 'auto';
-  onSound.volume = 0.42;
-
-  const mapCycleSound = new Audio('/audio/sfx/menu_27.wav');
-  mapCycleSound.preload = 'auto';
-  mapCycleSound.volume = 0.4;
-
-  const insufficientSound = new Audio('/audio/sfx/menu_19.wav');
-  insufficientSound.preload = 'auto';
-  insufficientSound.volume = 0.45;
-
-  const moneySound = new Audio('/audio/sfx/money_1.wav');
-  moneySound.preload = 'auto';
-  moneySound.volume = 0.5;
-
-  const powerupAvailableSound = new Audio('/audio/sfx/powerup.wav');
-  powerupAvailableSound.preload = 'auto';
-  powerupAvailableSound.volume = 0.5;
-
-  const powerupClaimedSound = new Audio('/audio/sfx/powerupclaimed.wav');
-  powerupClaimedSound.preload = 'auto';
-  powerupClaimedSound.volume = 0.5;
-
-  const victorySound = new Audio('/audio/sfx/victory.wav');
-  victorySound.preload = 'auto';
-  victorySound.volume = 0.55;
-
-  const defeatSound = new Audio('/audio/sfx/defeat.wav');
-  defeatSound.preload = 'auto';
-  defeatSound.volume = 0.55;
+  if (context) {
+    for (const key of Object.keys(clips) as ClipKey[]) {
+      void fetch(clips[key].file)
+        .then((response) => response.arrayBuffer())
+        .then((data) => context.decodeAudioData(data))
+        .then((buffer) => {
+          buffers.set(key, buffer);
+        })
+        .catch(() => {});
+    }
+  }
 
   let unlocked = false;
   const unlock = (): void => {
     unlocked = true;
+    if (context && context.state === 'suspended') {
+      void context.resume().catch(() => {});
+    }
     window.removeEventListener('pointerdown', unlock);
+    window.removeEventListener('touchstart', unlock);
     window.removeEventListener('keydown', unlock);
   };
   window.addEventListener('pointerdown', unlock);
+  window.addEventListener('touchstart', unlock);
   window.addEventListener('keydown', unlock);
 
-  const play = (src: HTMLAudioElement): void => {
-    if (!unlocked) {
+  const play = (key: ClipKey): void => {
+    if (!unlocked || !context) {
       return;
     }
-    const instance = src.cloneNode(true) as HTMLAudioElement;
-    instance.volume = src.volume;
-    void instance.play().catch(() => {});
+    const buffer = buffers.get(key);
+    if (!buffer) {
+      return;
+    }
+    if (context.state === 'suspended') {
+      void context.resume().catch(() => {});
+    }
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    const gain = context.createGain();
+    gain.gain.value = clips[key].volume;
+    source.connect(gain).connect(context.destination);
+    source.start();
   };
 
   return {
-    playHover: () => play(hoverSound),
-    playPlace: () => play(placeSound),
-    playAction: () => play(actionSound),
-    playOff: () => play(offSound),
-    playOn: () => play(onSound),
-    playMapCycle: () => play(mapCycleSound),
-    playInsufficient: () => play(insufficientSound),
-    playMoney: () => play(moneySound),
-    playPowerupAvailable: () => play(powerupAvailableSound),
-    playPowerupClaimed: () => play(powerupClaimedSound),
-    playVictory: () => play(victorySound),
-    playDefeat: () => play(defeatSound),
+    playHover: () => play('hover'),
+    playPlace: () => play('place'),
+    playAction: () => play('action'),
+    playOff: () => play('off'),
+    playOn: () => play('on'),
+    playMapCycle: () => play('mapCycle'),
+    playInsufficient: () => play('insufficient'),
+    playMoney: () => play('money'),
+    playPowerupAvailable: () => play('powerupAvailable'),
+    playPowerupClaimed: () => play('powerupClaimed'),
+    playVictory: () => play('victory'),
+    playDefeat: () => play('defeat'),
   };
 }
 

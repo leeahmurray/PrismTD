@@ -716,10 +716,16 @@ export class Game {
   }
 
   private updateToasts(dt: number): void {
+    let anyExpired = false;
     for (const toast of this.toasts) {
       toast.remaining -= dt;
+      if (toast.remaining <= 0) {
+        anyExpired = true;
+      }
     }
-    this.toasts = this.toasts.filter((toast) => toast.remaining > 0);
+    if (anyExpired) {
+      this.toasts = this.toasts.filter((toast) => toast.remaining > 0);
+    }
   }
 
   private pushToast(text: string): void {
@@ -804,9 +810,13 @@ export class Game {
   }
 
   private updateEnemies(dt: number): void {
-    const survivors: Enemy[] = [];
+    // Compact in place instead of allocating a new array every tick. Enemies
+    // spawned mid-loop (petal splits) are appended and picked up by the loop.
+    const enemies = this.enemies;
+    let writeIndex = 0;
 
-    for (const enemy of this.enemies) {
+    for (let readIndex = 0; readIndex < enemies.length; readIndex += 1) {
+      const enemy = enemies[readIndex];
       if (!enemy.alive) {
         continue;
       }
@@ -856,10 +866,11 @@ export class Game {
         enemy.prevY = pos.y;
       }
 
-      survivors.push(enemy);
+      enemies[writeIndex] = enemy;
+      writeIndex += 1;
     }
 
-    this.enemies = survivors;
+    enemies.length = writeIndex;
     this.hasDeadEnemies = false;
   }
 
@@ -927,14 +938,17 @@ export class Game {
       enemiesById.set(enemy.id, enemy);
     }
 
+    let anyExpired = false;
     for (const projectile of this.projectiles) {
       if (!projectile.alive) {
+        anyExpired = true;
         continue;
       }
 
       const target = enemiesById.get(projectile.targetId);
       if (!target || !target.alive) {
         projectile.alive = false;
+        anyExpired = true;
         continue;
       }
 
@@ -957,13 +971,16 @@ export class Game {
           target,
         );
         projectile.alive = false;
+        anyExpired = true;
       } else {
         projectile.x += (dx / distance) * step;
         projectile.y += (dy / distance) * step;
       }
     }
 
-    this.projectiles = this.projectiles.filter((p) => p.alive);
+    if (anyExpired) {
+      this.projectiles = this.projectiles.filter((p) => p.alive);
+    }
   }
 
   private updateBeams(dt: number): void {
@@ -971,11 +988,17 @@ export class Game {
       return;
     }
 
+    let anyExpired = false;
     for (const beam of this.beams) {
       beam.remaining -= dt;
+      if (beam.remaining <= 0) {
+        anyExpired = true;
+      }
     }
 
-    this.beams = this.beams.filter((beam) => beam.remaining > 0);
+    if (anyExpired) {
+      this.beams = this.beams.filter((beam) => beam.remaining > 0);
+    }
   }
 
   private applyChainStrike(
