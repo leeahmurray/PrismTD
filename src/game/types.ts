@@ -105,6 +105,22 @@ export interface MapRouteSnapshot {
   points: Vec2[];
 }
 
+export interface UpcomingWaveEntry {
+  kind: EnemyKind;
+  count: number;
+  /** Credits paid per kill for this enemy in this wave. */
+  bounty: number;
+}
+
+export interface UpcomingWaveSnapshot {
+  index: number;
+  /** 1-based display number. */
+  number: number;
+  /** Credits paid when the wave is cleared (wave reward plus between-wave bonus). */
+  clearReward: number;
+  entries: UpcomingWaveEntry[];
+}
+
 export interface SupportPreviewSnapshot {
   sourceTowerId: number | null;
   sourceKind: TowerKind;
@@ -127,6 +143,7 @@ export interface GameSnapshot {
   pathPoints: Vec2[];
   routes: MapRouteSnapshot[];
   supportPreviews: SupportPreviewSnapshot[];
+  upcomingWaves: UpcomingWaveSnapshot[];
   pathCells: string[];
   pathLength: number;
   enemies: Enemy[];

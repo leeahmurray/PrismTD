@@ -94,6 +94,12 @@ export class UI {
   private mobileAbilityDockEl: HTMLDivElement;
   private buildPanel: HTMLDivElement;
 
+  private incomingPanel: HTMLDivElement;
+
+  private incomingListEl: HTMLDivElement;
+
+  private renderedUpcoming: GameSnapshot['upcomingWaves'] | null = null;
+
   private selectedPanel: HTMLDivElement;
 
   private panelLayoutKey = '';
@@ -409,6 +415,13 @@ export class UI {
 
     this.headerRoot.append(headerTop, utilityRow, this.mobileActionsEl, this.mobileAbilityDockEl, this.musicModalEl);
 
+    this.incomingPanel = document.createElement('div');
+    this.incomingPanel.className = 'panel incoming-panel';
+    this.incomingPanel.innerHTML = '<strong>Incoming</strong>';
+    this.incomingListEl = document.createElement('div');
+    this.incomingListEl.className = 'incoming-list';
+    this.incomingPanel.append(this.incomingListEl);
+
     this.buildPanel = document.createElement('div');
     this.buildPanel.className = 'panel build-panel';
     this.buildPanel.innerHTML = '<strong>Tower Select</strong>';
@@ -496,7 +509,7 @@ export class UI {
       this.cancelMapSwitch();
     });
 
-    this.sidebarRoot.append(this.buildPanel, this.selectedPanel, this.abilityPanel);
+    this.sidebarRoot.append(this.incomingPanel, this.buildPanel, this.selectedPanel, this.abilityPanel);
 
     this.syncMusicState();
     this.updateModeDisplay();
@@ -549,6 +562,7 @@ export class UI {
       button.disabled = snapshot.gameOver || snapshot.victory;
     }
 
+    this.renderIncoming(snapshot);
     this.renderAbilities(snapshot);
     this.syncMusicState();
     this.renderSelected(snapshot, game);
@@ -936,11 +950,44 @@ export class UI {
     if (mobileLayout) {
       this.abilityPanel.classList.add('mobile-compact');
       this.mobileAbilityDockEl.append(this.abilityPanel);
-      this.sidebarRoot.append(this.buildPanel, this.selectedPanel);
+      this.sidebarRoot.append(this.incomingPanel, this.buildPanel, this.selectedPanel);
       return;
     }
 
     this.abilityPanel.classList.remove('mobile-compact');
-    this.sidebarRoot.append(this.buildPanel, this.selectedPanel, this.abilityPanel);
+    this.sidebarRoot.append(this.incomingPanel, this.buildPanel, this.selectedPanel, this.abilityPanel);
+  }
+
+  private renderIncoming(snapshot: GameSnapshot): void {
+    // The game hands back the same array until the next wave index changes.
+    if (this.renderedUpcoming === snapshot.upcomingWaves) {
+      return;
+    }
+    this.renderedUpcoming = snapshot.upcomingWaves;
+
+    if (snapshot.upcomingWaves.length === 0) {
+      this.incomingListEl.innerHTML = '<p class="incoming-empty">No more waves. Hold the line.</p>';
+      return;
+    }
+
+    this.incomingListEl.innerHTML = snapshot.upcomingWaves
+      .map((wave, position) => {
+        const enemies = wave.entries
+          .map((entry) => {
+            const name = BALANCE.enemies.stats[entry.kind].name;
+            return `<span class="incoming-enemy" title="${name}: ${entry.count} × $${entry.bounty} each">` +
+              `<i class="enemy-glyph ${entry.kind}"></i>` +
+              `<span class="incoming-count">×${entry.count}</span>` +
+              `<span class="incoming-bounty">$${entry.bounty}</span>` +
+              `</span>`;
+          })
+          .join('');
+        const label = position === 0 ? `Next · Wave ${wave.number}` : `Wave ${wave.number}`;
+        return `<div class="incoming-wave${position === 0 ? ' next' : ''}">` +
+          `<div class="incoming-head"><span>${label}</span><span class="incoming-reward">+$${wave.clearReward} clear</span></div>` +
+          `<div class="incoming-enemies">${enemies}</div>` +
+          `</div>`;
+      })
+      .join('');
   }
 }
