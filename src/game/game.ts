@@ -14,10 +14,12 @@ import type {
   SupportPreviewSnapshot,
   Toast,
   Tower,
+  UpcomingWaveSnapshot,
   Vec2,
 } from './types';
 
 const BONUS_ORB_RADIUS = 14;
+const UPCOMING_WAVE_PREVIEW_COUNT = 3;
 const EARLY_WAVE_REWARD_MULTIPLIER = 1.05;
 const SPAWN_STAGGER_DISTANCE = BALANCE.map.gridSizePx * 0.28;
 const CHAIN_MAX_TARGETS = 4;
@@ -146,6 +148,8 @@ export class Game {
 
   private mapNameCache: { maps: MapDefinition[]; names: string[] } | null = null;
 
+  private upcomingWavesCache: { key: string; waves: UpcomingWaveSnapshot[] } | null = null;
+
   private idCounters = {
     enemy: 1,
     tower: 1,
@@ -211,6 +215,7 @@ export class Game {
       pathPoints: this.paths[0]?.points ?? [],
       routes: this.getRouteSnapshots(),
       supportPreviews: this.getSupportPreviews(),
+      upcomingWaves: this.getUpcomingWaves(),
       pathCells: this.pathCellList,
       pathLength: this.paths[0]?.totalLength ?? 0,
       enemies: this.enemies,
@@ -1207,6 +1212,37 @@ export class Game {
       };
     }
     return this.routeSnapshotCache.routes;
+  }
+
+  private getUpcomingWaves(): UpcomingWaveSnapshot[] {
+    const key = `${this.mode}:${this.nextWaveIndex}`;
+    if (this.upcomingWavesCache && this.upcomingWavesCache.key === key) {
+      return this.upcomingWavesCache.waves;
+    }
+
+    const waves: UpcomingWaveSnapshot[] = [];
+    for (let offset = 0; offset < UPCOMING_WAVE_PREVIEW_COUNT; offset += 1) {
+      const waveIndex = this.nextWaveIndex + offset;
+      if (!this.isEndlessMode() && waveIndex >= BALANCE.waves.length) {
+        break;
+      }
+
+      const def = this.getWaveDefinition(waveIndex);
+      const bountyScale = BALANCE.enemies.bountyMultiplierPerWave ** waveIndex;
+      waves.push({
+        index: waveIndex,
+        number: waveIndex + 1,
+        clearReward: def.waveReward + BALANCE.economy.betweenWaveBonus,
+        entries: def.mix.map((entry) => ({
+          kind: entry.type,
+          count: entry.count,
+          bounty: Math.round(BALANCE.enemies.stats[entry.type].bounty * bountyScale),
+        })),
+      });
+    }
+
+    this.upcomingWavesCache = { key, waves };
+    return waves;
   }
 
   private getMapNames(): string[] {
