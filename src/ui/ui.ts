@@ -23,6 +23,7 @@ interface UIActions {
   onToggleSpeed: () => void;
   onTogglePause: () => void;
   onUpgradeTower: () => void;
+  onUpgradeTowerMax: () => void;
   onSellTower: () => void;
   onToggleTargeting: () => void;
   onRestart: () => void;
@@ -111,6 +112,7 @@ export class UI {
   private mobileActionsEl: HTMLDivElement;
 
   private mobileUpgradeEl: HTMLButtonElement;
+  private mobileUpgradeMaxEl: HTMLButtonElement;
 
   private mobileSellEl: HTMLButtonElement;
 
@@ -406,6 +408,10 @@ export class UI {
     this.mobileUpgradeEl.className = 'mobile-action-btn upgrade';
     this.mobileUpgradeEl.textContent = 'Upgrade';
     this.bindButtonPress(this.mobileUpgradeEl, () => this.actions.onUpgradeTower());
+    this.mobileUpgradeMaxEl = document.createElement('button');
+    this.mobileUpgradeMaxEl.className = 'mobile-action-btn upgrade max';
+    this.mobileUpgradeMaxEl.textContent = 'Max';
+    this.bindButtonPress(this.mobileUpgradeMaxEl, () => this.actions.onUpgradeTowerMax());
 
     this.mobileSellEl = document.createElement('button');
     this.mobileSellEl.className = 'mobile-action-btn sell';
@@ -417,7 +423,7 @@ export class UI {
     this.mobileTargetEl.textContent = 'Target';
     this.bindButtonPress(this.mobileTargetEl, () => this.actions.onToggleTargeting());
 
-    this.mobileActionsEl.append(this.mobileUpgradeEl, this.mobileSellEl, this.mobileTargetEl);
+    this.mobileActionsEl.append(this.mobileUpgradeEl, this.mobileUpgradeMaxEl, this.mobileSellEl, this.mobileTargetEl);
 
     this.mobileAbilityDockEl = document.createElement('div');
     this.mobileAbilityDockEl.className = 'mobile-ability-dock';
@@ -810,31 +816,51 @@ export class UI {
       : canUpgrade
         ? 'Buy the next level now'
         : `Need $${upgradeCost - snapshot.money} more`;
+    // Max buys every level the bank can afford in one click (at least two, or it is just Upgrade).
+    const maxPlan = game.getMaxAffordableUpgrade(selectedTower, snapshot.money);
+    const canMax = maxPlan.levels >= 2;
+    const maxLabel = isMaxed
+      ? 'Max level'
+      : canMax
+        ? `Max → Lv ${maxPlan.targetLevel}`
+        : `Max → Lv ${BALANCE.towers.maxLevel}`;
+    const maxPrice = isMaxed ? '' : `<span class="upgrade-price">$${canMax ? maxPlan.cost : game.getMaxAffordableUpgrade(selectedTower, Number.POSITIVE_INFINITY).cost}</span>`;
+    const maxTitle = isMaxed
+      ? 'This tower is at max level'
+      : canMax
+        ? `Buy ${maxPlan.levels} levels at once`
+        : 'Buys every level you can afford once you can afford two or more';
 
+    // Actions sit at the top so they stay put while the text below changes length.
     this.selectedPanel.innerHTML = `
-      <strong>${towerInfo.name}</strong>
-      <div class="selected-stats-grid">
-        <div>Cost $${towerInfo.cost}</div>
-        <div>Level ${selectedTower.level}/${BALANCE.towers.maxLevel}</div>
-        <div>Damage ${stats.damage.toFixed(1)}</div>
-        <div>Rate ${stats.fireRate.toFixed(2)}/s</div>
-        <div>Range ${stats.range.toFixed(1)}</div>
-        <div>Target ${selectedTower.targeting}</div>
-      </div>
-      <div class="selected-special">Special ${this.specialText(selectedTower.kind, stats)}</div>
-      <div class="upgrade-preview">${upgradePreview}</div>
+      <strong>${towerInfo.name} <span class="selected-level">Lv ${selectedTower.level}/${BALANCE.towers.maxLevel}</span></strong>
       <div class="panel-actions">
         <button id="upgrade-btn" class="upgrade-btn${canUpgrade ? ' ready' : ''}" title="${upgradeTitle}" ${canUpgrade ? '' : 'disabled'}>
           <span>${upgradeLabel}</span>${upgradePrice}
         </button>
+        <button id="upgrade-max-btn" class="upgrade-btn upgrade-max-btn${canMax ? ' ready' : ''}" title="${maxTitle}" ${canMax ? '' : 'disabled'}>
+          <span>${maxLabel}</span>${maxPrice}
+        </button>
         <button id="sell-btn">Sell (+${sellValue})</button>
-        <button id="targeting-btn">Toggle Targeting</button>
+        <button id="targeting-btn">Target: ${selectedTower.targeting}</button>
       </div>
+      <div class="upgrade-preview">${upgradePreview}</div>
+      <div class="selected-stats-grid">
+        <div>Cost $${towerInfo.cost}</div>
+        <div>Damage ${stats.damage.toFixed(1)}</div>
+        <div>Rate ${stats.fireRate.toFixed(2)}/s</div>
+        <div>Range ${stats.range.toFixed(1)}</div>
+      </div>
+      <div class="selected-special">Special ${this.specialText(selectedTower.kind, stats)}</div>
     `;
 
     const upgradeBtn = this.selectedPanel.querySelector<HTMLButtonElement>('#upgrade-btn');
     if (upgradeBtn) {
       this.bindButtonPress(upgradeBtn, () => this.actions.onUpgradeTower());
+    }
+    const upgradeMaxBtn = this.selectedPanel.querySelector<HTMLButtonElement>('#upgrade-max-btn');
+    if (upgradeMaxBtn) {
+      this.bindButtonPress(upgradeMaxBtn, () => this.actions.onUpgradeTowerMax());
     }
     const sellBtn = this.selectedPanel.querySelector<HTMLButtonElement>('#sell-btn');
     if (sellBtn) {
@@ -862,6 +888,10 @@ export class UI {
       ? 'Max level'
       : `Upgrade Lv ${selectedTower.level + 1} · $${upgradeCost}`;
     this.mobileUpgradeEl.disabled = !canUpgrade;
+    const maxPlan = game.getMaxAffordableUpgrade(selectedTower, snapshot.money);
+    const canMax = maxPlan.levels >= 2;
+    this.mobileUpgradeMaxEl.textContent = canMax ? `Max Lv ${maxPlan.targetLevel} · $${maxPlan.cost}` : 'Max';
+    this.mobileUpgradeMaxEl.disabled = !canMax;
     this.mobileSellEl.textContent = `Sell +${sellValue}`;
     this.mobileSellEl.disabled = false;
     this.mobileTargetEl.textContent = `Target ${selectedTower.targeting}`;

@@ -527,6 +527,41 @@ export class Game {
     tower.level = nextLevel;
   }
 
+  /** How far the bank can take this tower right now: the levels it can buy and what they total. */
+  getMaxAffordableUpgrade(tower: Tower, money: number): { levels: number; cost: number; targetLevel: number } {
+    let levels = 0;
+    let cost = 0;
+    let level = tower.level;
+    while (level < BALANCE.towers.maxLevel) {
+      const next = this.getUpgradeCost(tower.kind, level);
+      if (cost + next > money) {
+        break;
+      }
+      cost += next;
+      levels += 1;
+      level += 1;
+    }
+    return { levels, cost, targetLevel: level };
+  }
+
+  /** Buy every level the bank can afford in one go. */
+  upgradeSelectedTowerToMax(): number {
+    const tower = this.getSelectedTower();
+    if (!tower) {
+      return 0;
+    }
+    const plan = this.getMaxAffordableUpgrade(tower, this.money);
+    if (plan.levels === 0) {
+      if (tower.level < BALANCE.towers.maxLevel) {
+        this.pushToast('Insufficient credits');
+      }
+      return 0;
+    }
+    this.money -= plan.cost;
+    tower.level = plan.targetLevel;
+    return plan.levels;
+  }
+
   sellSelectedTower(): void {
     const tower = this.getSelectedTower();
     if (!tower) {
