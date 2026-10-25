@@ -109,9 +109,16 @@ function setupBackgroundMusic(): {
   const fadeDurationMs = 4500;
   let playSucceeded = false;
 
+  // Only one fade runs at a time; a second call restarts it instead of stacking
+  // loops that fight over the volume.
+  let fadeToken = 0;
   const fadeIn = (): void => {
+    const token = ++fadeToken;
     const fadeStart = performance.now();
     const step = (now: number): void => {
+      if (token !== fadeToken) {
+        return;
+      }
       const t = Math.min(1, (now - fadeStart) / fadeDurationMs);
       music.volume = targetVolume * t;
       if (t < 1 && playSucceeded) {
@@ -263,6 +270,26 @@ function setupUiSfx(): UiSfx {
   const context = AudioContextCtor ? new AudioContextCtor() : null;
   const buffers = new Map<ClipKey, AudioBuffer>();
 
+  // Every clip goes through one master bus with a limiter. Without it, a burst of
+  // overlapping clips (hover, kills, wave clears) sums past full scale and the whole
+  // mix crackles and distorts until the page is reloaded.
+  const masterBus = context ? context.createGain() : null;
+  if (context && masterBus) {
+    masterBus.gain.value = 0.85;
+    const limiter = context.createDynamicsCompressor();
+    limiter.threshold.value = -10;
+    limiter.knee.value = 6;
+    limiter.ratio.value = 12;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.12;
+    masterBus.connect(limiter).connect(context.destination);
+  }
+  // Cap simultaneous voices and stop the same clip retriggering within a few ms.
+  const MAX_VOICES = 10;
+  const MIN_RETRIGGER_MS = 45;
+  let activeVoices = 0;
+  const lastPlayedAt = new Map<ClipKey, number>();
+
   if (context) {
     for (const key of Object.keys(clips) as ClipKey[]) {
       void fetch(clips[key].file)
@@ -300,11 +327,23 @@ function setupUiSfx(): UiSfx {
     if (context.state === 'suspended') {
       void context.resume().catch(() => {});
     }
+    const now = performance.now();
+    const last = lastPlayedAt.get(key) ?? -Infinity;
+    if (now - last < MIN_RETRIGGER_MS || activeVoices >= MAX_VOICES || !masterBus) {
+      return;
+    }
+    lastPlayedAt.set(key, now);
     const source = context.createBufferSource();
     source.buffer = buffer;
     const gain = context.createGain();
     gain.gain.value = clips[key].volume;
-    source.connect(gain).connect(context.destination);
+    source.connect(gain).connect(masterBus);
+    activeVoices += 1;
+    source.onended = () => {
+      activeVoices = Math.max(0, activeVoices - 1);
+      source.disconnect();
+      gain.disconnect();
+    };
     source.start();
   };
 
@@ -377,6 +416,12 @@ function setupUiSfx(): UiSfx {
 
     game.upgradeSelectedTower();
   },
+  onUpgradeTowerMax: () => {
+    const bought = game.upgradeSelectedTowerToMax();
+    if (bought === 0) {
+      uiSfx.playInsufficient();
+    }
+  },
   onSellTower: () => game.sellSelectedTower(),
   onToggleTargeting: () => game.toggleSelectedTargeting(),
   onRestart: () => game.restart(),
@@ -418,6 +463,7 @@ app.addEventListener(
     }
     if (
       interactive.id === 'upgrade-btn' ||
+      interactive.id === 'upgrade-max-btn' ||
       interactive.id === 'sell-btn' ||
       interactive.id === 'targeting-btn'
     ) {
@@ -440,7 +486,7 @@ app.addEventListener(
     if (cycleButton) {
       uiSfx.playMapCycle();
     }
-    const actionButton = target?.closest<HTMLButtonElement>('#upgrade-btn, #sell-btn, #targeting-btn');
+    const actionButton = target?.closest<HTMLButtonElement>('#upgrade-btn, #upgrade-max-btn, #sell-btn, #targeting-btn');
     if (actionButton) {
       uiSfx.playAction();
     }
