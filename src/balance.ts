@@ -275,15 +275,15 @@ const MAP_LAYOUTS = [
 ] as const;
 
 const BASE_WAVES: WaveDefinition[] = [
-  { mix: [{ type: 'runner', count: 12 }], spawnInterval: 0.64, waveReward: 8 },
-  { mix: [{ type: 'runner', count: 16 }], spawnInterval: 0.58, waveReward: 10 },
+  { mix: [{ type: 'runner', count: 12 }], spawnInterval: 0.64, waveReward: 10 },
+  { mix: [{ type: 'runner', count: 16 }], spawnInterval: 0.58, waveReward: 12 },
   {
     mix: [
       { type: 'runner', count: 12 },
       { type: 'swarm', count: 6 },
     ],
     spawnInterval: 0.52,
-    waveReward: 14,
+    waveReward: 16,
   },
   {
     mix: [
@@ -291,7 +291,7 @@ const BASE_WAVES: WaveDefinition[] = [
       { type: 'swarm', count: 8 },
     ],
     spawnInterval: 0.47,
-    waveReward: 16,
+    waveReward: 20,
   },
   {
     mix: [
@@ -299,7 +299,7 @@ const BASE_WAVES: WaveDefinition[] = [
       { type: 'runner', count: 12 },
     ],
     spawnInterval: 0.6,
-    waveReward: 20,
+    waveReward: 24,
   },
   {
     mix: [
@@ -307,16 +307,16 @@ const BASE_WAVES: WaveDefinition[] = [
       { type: 'swarm', count: 12 },
     ],
     spawnInterval: 0.56,
-    waveReward: 24,
+    waveReward: 30,
   },
-  { mix: [{ type: 'runner', count: 30 }], spawnInterval: 0.42, waveReward: 28 },
+  { mix: [{ type: 'runner', count: 30 }], spawnInterval: 0.42, waveReward: 36 },
   {
     mix: [
       { type: 'swarm', count: 18 },
       { type: 'runner', count: 16 },
     ],
     spawnInterval: 0.4,
-    waveReward: 34,
+    waveReward: 42,
   },
   {
     mix: [
@@ -325,7 +325,7 @@ const BASE_WAVES: WaveDefinition[] = [
       { type: 'blossom', count: 2 },
     ],
     spawnInterval: 0.54,
-    waveReward: 42,
+    waveReward: 52,
   },
   {
     mix: [
@@ -334,7 +334,7 @@ const BASE_WAVES: WaveDefinition[] = [
       { type: 'blossom', count: 3 },
     ],
     spawnInterval: 0.45,
-    waveReward: 50,
+    waveReward: 64,
   },
 ];
 
@@ -347,7 +347,7 @@ const STANDARD_WAVES: WaveDefinition[] = Array.from({ length: 50 }, (_, waveInde
         { type: 'tank', count: 12 },
       ],
       spawnInterval: 0.42,
-      waveReward: 96,
+      waveReward: 120,
     };
   }
 
@@ -355,19 +355,19 @@ const STANDARD_WAVES: WaveDefinition[] = Array.from({ length: 50 }, (_, waveInde
     return {
       mix: [
         { type: 'boss', count: 1 },
-        { type: 'blossom', count: 10 },
-        { type: 'tank', count: 32 },
-        { type: 'swarm', count: 40 },
+        { type: 'blossom', count: 8 },
+        { type: 'tank', count: 24 },
+        { type: 'swarm', count: 30 },
       ],
       spawnInterval: 0.32,
-      waveReward: 240,
+      waveReward: 300,
     };
   }
 
   const base = BASE_WAVES[waveIndex % BASE_WAVES.length];
   const cycle = Math.floor(waveIndex / BASE_WAVES.length);
   const countMultiplier = 1 + cycle * 0.24;
-  const rewardMultiplier = 1 + cycle * 0.18;
+  const rewardMultiplier = 1 + cycle * 0.25;
   const spawnInterval = Math.max(0.28, base.spawnInterval * (1 - cycle * 0.05));
   const mix = base.mix.map((entry) => ({
     type: entry.type,
@@ -406,12 +406,15 @@ export const BALANCE = {
     kamikazeConcurrentWaves: 3,
   },
   economy: {
-    startMoney: 200,
+    startMoney: 240,
     startLives: 20,
     sellRefundPct: 0.7,
-    betweenWaveBonus: 25,
-    interestPerWavePct: 0.03,
+    betweenWaveBonus: 30,
+    // Interest is paid on banked credits at each wave clear. It starts high enough to notice,
+    // climbs each wave, and stops at the cap so late-game money cannot snowball forever.
+    interestPerWavePct: 0.05,
     interestGainPerWavePct: 0.02,
+    interestMaxPct: 0.35,
   },
   map: {
     width: 960,
@@ -424,8 +427,12 @@ export const BALANCE = {
   },
   towers: {
     maxLevel: 10,
-    upgradeCostMultiplierByLevel: [1.0, 0.75, 0.85, 1.0, 1.15, 1.35, 1.6, 1.9, 2.25, 2.65],
-    damageMultiplierByLevel: [1.0, 1.15, 1.32, 1.52, 1.75, 2.02, 2.33, 2.68, 3.08, 3.55],
+    // Each level costs about as much as the damage it adds, so upgrading a well-placed
+    // tower is as good a buy as a new one (and better once it also gains range and rate).
+    upgradeCostMultiplierByLevel: [1.0, 0.45, 0.55, 0.7, 0.85, 1.05, 1.3, 1.6, 1.95, 2.35],
+    damageMultiplierByLevel: [1.0, 1.4, 1.85, 2.4, 3.05, 3.8, 4.7, 5.75, 7.0, 8.5],
+    // Auras and bank income grow more gently than damage so support towers stay support.
+    supportMultiplierByLevel: [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.25, 2.5, 2.75, 3.0],
     rangeMultiplierByLevel: [1.0, 1.03, 1.06, 1.1, 1.14, 1.18, 1.23, 1.28, 1.34, 1.4],
     fireRateMultiplierByType: {
       pulse: [1.0, 1.04, 1.08, 1.12, 1.16, 1.2, 1.25, 1.3, 1.36, 1.42],
@@ -455,40 +462,44 @@ export const BALANCE = {
         cost: 110,
         range: 95,
         fireRate: 1.1,
-        damage: 28,
-        splashRadius: 22,
+        damage: 34,
+        splashRadius: 36,
         slowPct: 0,
         slowDuration: 0,
         projectileSpeed: 280,
       },
       frost: {
         name: 'Frost Arc',
-        cost: 90,
+        cost: 80,
         range: 105,
         fireRate: 1.8,
-        damage: 5,
+        damage: 8,
         splashRadius: 0,
         slowPct: 0.45,
-        slowDuration: 1,
+        slowDuration: 1.2,
         projectileSpeed: 320,
       },
       chain: {
         name: 'Prism Link',
-        cost: 145,
-        range: 118,
-        fireRate: 1.25,
-        damage: 11,
+        cost: 130,
+        range: 125,
+        fireRate: 1.4,
+        damage: 16,
         splashRadius: 0,
         slowPct: 0,
         slowDuration: 0,
         projectileSpeed: 0,
+        // Arcs to this many enemies, each jump within this range, keeping this share of damage.
+        chainTargets: 6,
+        chainJumpRange: 135,
+        chainFalloff: 0.8,
       },
       laser: {
         name: 'Rail Prism',
         cost: 165,
         range: 132,
-        fireRate: 0.72,
-        damage: 20,
+        fireRate: 0.8,
+        damage: 26,
         splashRadius: 0,
         slowPct: 0,
         slowDuration: 0,
@@ -504,8 +515,8 @@ export const BALANCE = {
         slowPct: 0,
         slowDuration: 0,
         projectileSpeed: 320,
-        dotDamagePerSecond: 9,
-        dotDuration: 3.6,
+        dotDamagePerSecond: 12,
+        dotDuration: 4,
       },
       relay: {
         name: 'Range Relay',
@@ -541,42 +552,45 @@ export const BALANCE = {
         slowPct: 0,
         slowDuration: 0,
         projectileSpeed: 0,
-        incomePerWave: 18,
+        incomePerWave: 22,
       },
     },
   },
   enemies: {
-    hpMultiplierPerWave: 1.16,
+    // Health compounds more slowly than before (1.16) and bounties faster (1.04), so
+    // income keeps pace with the towers a wave needs instead of falling behind by wave 10.
+    // 1.135 keeps the first 20 waves fair and still makes waves 40-50 a real wall.
+    hpMultiplierPerWave: 1.135,
     speedMultiplierPerWave: 1.015,
-    bountyMultiplierPerWave: 1.04,
+    bountyMultiplierPerWave: 1.06,
     stats: {
       runner: {
         name: 'Glint Runner',
-        hp: 52,
+        hp: 50,
         speed: 78,
-        bounty: 6,
+        bounty: 7,
       },
       tank: {
         name: 'Bastion Core',
         hp: 195,
         speed: 42,
-        bounty: 14,
+        bounty: 16,
       },
       swarm: {
         name: 'Shard Swarm',
-        hp: 92,
+        hp: 84,
         speed: 62,
-        bounty: 8,
+        bounty: 9,
       },
       blossom: {
         name: 'Petal Bloom',
-        hp: 168,
+        hp: 160,
         speed: 52,
-        bounty: 12,
+        bounty: 14,
       },
       petal: {
         name: 'Bloom Shard',
-        hp: 30,
+        hp: 28,
         speed: 92,
         bounty: 2,
       },
@@ -584,7 +598,7 @@ export const BALANCE = {
         name: 'Dreadnought Core',
         hp: 1200,
         speed: 11,
-        bounty: 120,
+        bounty: 150,
       },
     },
   },
@@ -604,25 +618,32 @@ export const BALANCE = {
     stats: {
       overclock: {
         name: 'Overclock',
-        description: '+40% tower fire rate for 10s',
+        description: '+60% tower fire rate for 12s',
         maxCharges: 3,
         startingCharges: 1,
         chargeThreshold: 50,
         chargeSourceLabel: 'Gain 1 charge every 50 enemies killed',
-        duration: 10,
-        fireRateBoost: 0.4,
+        duration: 12,
+        fireRateBoost: 0.6,
         requiresEnemies: false,
         requiresTowers: true,
         toast: 'Overclock engaged',
       },
       ionBurst: {
         name: 'Ion Burst',
-        description: 'Deal 42 damage to every enemy',
+        description: 'Shock every enemy, then burn them for 6s',
         maxCharges: 3,
         startingCharges: 1,
-        chargeThreshold: 500,
-        chargeSourceLabel: 'Gain 1 charge every $500 earned',
-        damage: 42,
+        // The charge cost rises with bounties so the burst stays about one per wave or two.
+        chargeThreshold: 600,
+        chargeThresholdScalesWithBounty: true,
+        chargeSourceLabel: 'Gain 1 charge every $600 earned (rises with the waves)',
+        // Both numbers scale with enemy health growth, so the burst always lands like
+        // it does on wave 1: the hit kills runners outright, the burn finishes swarms.
+        damage: 30,
+        dotDamagePerSecond: 7,
+        dotDuration: 6,
+        scalesWithWave: true,
         requiresEnemies: true,
         requiresTowers: false,
         toast: 'Ion Burst discharged',
@@ -632,11 +653,11 @@ export const BALANCE = {
         description: 'Push back & slow enemies',
         maxCharges: 3,
         startingCharges: 1,
-        chargeThreshold: 4,
-        chargeSourceLabel: 'Gain 1 charge every 4 waves cleared',
-        pushDistance: 90,
+        chargeThreshold: 2,
+        chargeSourceLabel: 'Gain 1 charge every 2 waves cleared',
+        pushDistance: 120,
         slowPct: 0.35,
-        slowDuration: 2.5,
+        slowDuration: 3,
         requiresEnemies: true,
         requiresTowers: false,
         toast: 'Phase Warp destabilized the lane',

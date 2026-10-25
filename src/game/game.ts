@@ -22,9 +22,9 @@ const BONUS_ORB_RADIUS = 14;
 const UPCOMING_WAVE_PREVIEW_COUNT = 3;
 const EARLY_WAVE_REWARD_MULTIPLIER = 1.05;
 const SPAWN_STAGGER_DISTANCE = BALANCE.map.gridSizePx * 0.28;
-const CHAIN_MAX_TARGETS = 4;
-const CHAIN_JUMP_RANGE = 102;
-const CHAIN_DAMAGE_FALLOFF = 0.64;
+const CHAIN_MAX_TARGETS = BALANCE.towers.stats.chain.chainTargets;
+const CHAIN_JUMP_RANGE = BALANCE.towers.stats.chain.chainJumpRange;
+const CHAIN_DAMAGE_FALLOFF = BALANCE.towers.stats.chain.chainFalloff;
 const BEAM_LIFETIME = 0.09;
 const LASER_LINE_HALF_WIDTH = 10;
 function clamp(value: number, min: number, max: number): number {
@@ -106,7 +106,7 @@ export class Game {
 
   private bonusCredits = 0;
 
-  private interestRatePct = BALANCE.economy.interestPerWavePct;
+  private interestRatePct: number = BALANCE.economy.interestPerWavePct;
 
   private nextWaveIndex = 0;
 
@@ -416,8 +416,17 @@ export class Game {
         BALANCE.abilities.stats.overclock.duration,
       );
     } else if (kind === 'ionBurst') {
+      const burst = BALANCE.abilities.stats.ionBurst;
+      // Scale with the health curve of the wave in play so the burst never becomes a tickle.
+      const scale = burst.scalesWithWave
+        ? BALANCE.enemies.hpMultiplierPerWave ** Math.max(0, this.nextWaveIndex - 1)
+        : 1;
       for (const enemy of [...this.enemies]) {
-        this.applyDamage(enemy, BALANCE.abilities.stats.ionBurst.damage);
+        this.applyDamage(enemy, burst.damage * scale);
+        if (enemy.alive) {
+          enemy.dotDamagePerSecond = Math.max(enemy.dotDamagePerSecond, burst.dotDamagePerSecond * scale);
+          enemy.dotRemaining = Math.max(enemy.dotRemaining, burst.dotDuration);
+        }
       }
       this.compactDeadEnemies();
     } else {
@@ -576,14 +585,13 @@ export class Game {
     const range = base.range * BALANCE.towers.rangeMultiplierByLevel[levelIndex] * rangeBoost;
     const fireRate =
       base.fireRate * BALANCE.towers.fireRateMultiplierByType[tower.kind][levelIndex] * fireRateBoost;
-    const supportDamageBoost =
-      supportDamageBoostFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex];
-    const supportRangeBoost =
-      supportRangeBoostFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex];
+    const supportMultiplier = BALANCE.towers.supportMultiplierByLevel[levelIndex];
+    const supportDamageBoost = supportDamageBoostFor(tower.kind) * supportMultiplier;
+    const supportRangeBoost = supportRangeBoostFor(tower.kind) * supportMultiplier;
     const dotDamagePerSecond =
       dotDamagePerSecondFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex] * damageBoost;
     const dotDuration = dotDurationFor(tower.kind);
-    const incomePerWave = Math.round(incomePerWaveFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex]);
+    const incomePerWave = Math.round(incomePerWaveFor(tower.kind) * supportMultiplier);
 
     return {
       damage,
@@ -714,9 +722,9 @@ export class Game {
       slowDuration: base.slowDuration,
       dotDamagePerSecond: dotDamagePerSecondFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex] * damageBoost,
       dotDuration: dotDurationFor(tower.kind),
-      supportDamageBoost: supportDamageBoostFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex],
-      supportRangeBoost: supportRangeBoostFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex],
-      incomePerWave: Math.round(incomePerWaveFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex]),
+      supportDamageBoost: supportDamageBoostFor(tower.kind) * BALANCE.towers.supportMultiplierByLevel[levelIndex],
+      supportRangeBoost: supportRangeBoostFor(tower.kind) * BALANCE.towers.supportMultiplierByLevel[levelIndex],
+      incomePerWave: Math.round(incomePerWaveFor(tower.kind) * BALANCE.towers.supportMultiplierByLevel[levelIndex]),
     };
   }
 
@@ -1285,7 +1293,10 @@ export class Game {
         this.pushToast(`Wave ${wave.index + 1} clear +${reward}${earlyTag} +${interestEarned} interest${bankTag}`);
         this.completedWaveCount += 1;
         this.addAbilityProgress('phaseWarp', 1);
-        this.interestRatePct += BALANCE.economy.interestGainPerWavePct;
+        this.interestRatePct = Math.min(
+          BALANCE.economy.interestMaxPct,
+          this.interestRatePct + BALANCE.economy.interestGainPerWavePct,
+        );
         this.maybeSpawnBonusOrb();
       }
 
@@ -1635,6 +1646,15 @@ export class Game {
     this.addAbilityProgress('ionBurst', amount);
   }
 
+  private getAbilityChargeThreshold(kind: AbilityKind): number {
+    const ability = BALANCE.abilities.stats[kind];
+    if ('chargeThresholdScalesWithBounty' in ability && ability.chargeThresholdScalesWithBounty) {
+      const waveIndex = Math.max(0, this.nextWaveIndex - 1);
+      return Math.round(ability.chargeThreshold * BALANCE.enemies.bountyMultiplierPerWave ** waveIndex);
+    }
+    return ability.chargeThreshold;
+  }
+
   private addAbilityProgress(kind: AbilityKind, amount: number): void {
     if (amount <= 0) {
       return;
@@ -1648,9 +1668,10 @@ export class Game {
 
     state.progress += amount;
     let chargesGained = 0;
+    const threshold = this.getAbilityChargeThreshold(kind);
 
-    while (state.charges < ability.maxCharges && state.progress >= ability.chargeThreshold) {
-      state.progress -= ability.chargeThreshold;
+    while (state.charges < ability.maxCharges && state.progress >= threshold) {
+      state.progress -= threshold;
       state.charges += 1;
       chargesGained += 1;
     }
