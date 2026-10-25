@@ -106,7 +106,7 @@ export class Game {
 
   private bonusCredits = 0;
 
-  private interestRatePct = BALANCE.economy.interestPerWavePct;
+  private interestRatePct: number = BALANCE.economy.interestPerWavePct;
 
   private nextWaveIndex = 0;
 
@@ -416,8 +416,17 @@ export class Game {
         BALANCE.abilities.stats.overclock.duration,
       );
     } else if (kind === 'ionBurst') {
+      const burst = BALANCE.abilities.stats.ionBurst;
+      // Scale with the health curve of the wave in play so the burst never becomes a tickle.
+      const scale = burst.scalesWithWave
+        ? BALANCE.enemies.hpMultiplierPerWave ** Math.max(0, this.nextWaveIndex - 1)
+        : 1;
       for (const enemy of [...this.enemies]) {
-        this.applyDamage(enemy, BALANCE.abilities.stats.ionBurst.damage);
+        this.applyDamage(enemy, burst.damage * scale);
+        if (enemy.alive) {
+          enemy.dotDamagePerSecond = Math.max(enemy.dotDamagePerSecond, burst.dotDamagePerSecond * scale);
+          enemy.dotRemaining = Math.max(enemy.dotRemaining, burst.dotDuration);
+        }
       }
       this.compactDeadEnemies();
     } else {
@@ -1284,7 +1293,10 @@ export class Game {
         this.pushToast(`Wave ${wave.index + 1} clear +${reward}${earlyTag} +${interestEarned} interest${bankTag}`);
         this.completedWaveCount += 1;
         this.addAbilityProgress('phaseWarp', 1);
-        this.interestRatePct += BALANCE.economy.interestGainPerWavePct;
+        this.interestRatePct = Math.min(
+          BALANCE.economy.interestMaxPct,
+          this.interestRatePct + BALANCE.economy.interestGainPerWavePct,
+        );
         this.maybeSpawnBonusOrb();
       }
 
@@ -1634,6 +1646,15 @@ export class Game {
     this.addAbilityProgress('ionBurst', amount);
   }
 
+  private getAbilityChargeThreshold(kind: AbilityKind): number {
+    const ability = BALANCE.abilities.stats[kind];
+    if ('chargeThresholdScalesWithBounty' in ability && ability.chargeThresholdScalesWithBounty) {
+      const waveIndex = Math.max(0, this.nextWaveIndex - 1);
+      return Math.round(ability.chargeThreshold * BALANCE.enemies.bountyMultiplierPerWave ** waveIndex);
+    }
+    return ability.chargeThreshold;
+  }
+
   private addAbilityProgress(kind: AbilityKind, amount: number): void {
     if (amount <= 0) {
       return;
@@ -1647,9 +1668,10 @@ export class Game {
 
     state.progress += amount;
     let chargesGained = 0;
+    const threshold = this.getAbilityChargeThreshold(kind);
 
-    while (state.charges < ability.maxCharges && state.progress >= ability.chargeThreshold) {
-      state.progress -= ability.chargeThreshold;
+    while (state.charges < ability.maxCharges && state.progress >= threshold) {
+      state.progress -= threshold;
       state.charges += 1;
       chargesGained += 1;
     }
