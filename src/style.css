@@ -1651,14 +1651,23 @@ button:disabled {
   margin: 6px 0 8px;
 }
 
+/* Upgrade and Max share the first row; Sell and Target share the second. */
 .panel-actions .upgrade-btn {
-  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   min-height: 34px;
+  min-width: 0;
+  padding-left: 8px;
+  padding-right: 8px;
+  white-space: nowrap;
   font-weight: 700;
+}
+
+.panel-actions .upgrade-btn > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .selected-panel .panel-actions {
