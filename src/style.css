@@ -1494,6 +1494,41 @@ button:disabled {
   box-shadow: 0 0 8px rgba(166, 255, 0, 0.22);
 }
 
+/* The one-level upgrade is the primary action: full width, label left, price right. */
+.panel-actions .upgrade-btn {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.upgrade-btn.ready {
+  background: rgba(166, 255, 0, 0.14);
+}
+
+.upgrade-btn:disabled {
+  opacity: 0.85;
+  border-color: rgba(166, 255, 0, 0.35);
+  box-shadow: none;
+}
+
+.upgrade-price {
+  color: #a6ff00;
+  font-variant-numeric: tabular-nums;
+}
+
+.upgrade-btn:disabled .upgrade-price {
+  color: #ffb36b;
+}
+
+.upgrade-preview {
+  color: #9ce8ff;
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
 .toasts {
   position: absolute;
   top: 8px;

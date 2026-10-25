@@ -773,9 +773,22 @@ export class UI {
 
     const stats = game.getTowerStats(selectedTower);
     const towerInfo = BALANCE.towers.stats[selectedTower.kind];
+    const isMaxed = selectedTower.level >= BALANCE.towers.maxLevel;
     const upgradeCost = game.getUpgradeCost(selectedTower.kind, selectedTower.level);
     const sellValue = Math.floor(game.getTowerInvestedCost(selectedTower) * BALANCE.economy.sellRefundPct);
-    const canUpgrade = selectedTower.level < BALANCE.towers.maxLevel && snapshot.money >= upgradeCost;
+    const canUpgrade = !isMaxed && snapshot.money >= upgradeCost;
+    // Preview the next level so the price has something to weigh against.
+    const nextStats = isMaxed ? null : game.getTowerStats({ ...selectedTower, level: selectedTower.level + 1 });
+    const upgradePreview = nextStats
+      ? `Lv ${selectedTower.level + 1}: ${this.upgradePreviewText(selectedTower.kind, stats, nextStats)}`
+      : 'Fully upgraded';
+    const upgradeLabel = isMaxed ? 'Max level' : `Upgrade to Lv ${selectedTower.level + 1}`;
+    const upgradePrice = isMaxed ? '' : `<span class="upgrade-price">$${upgradeCost}</span>`;
+    const upgradeTitle = isMaxed
+      ? 'This tower is at max level'
+      : canUpgrade
+        ? 'Buy the next level now'
+        : `Need $${upgradeCost - snapshot.money} more`;
 
     this.selectedPanel.innerHTML = `
       <strong>${towerInfo.name}</strong>
@@ -788,9 +801,10 @@ export class UI {
         <div>Target ${selectedTower.targeting}</div>
       </div>
       <div class="selected-special">Special ${this.specialText(selectedTower.kind, stats)}</div>
+      <div class="upgrade-preview">${upgradePreview}</div>
       <div class="panel-actions">
-        <button id="upgrade-btn" class="upgrade-btn" ${canUpgrade ? '' : 'disabled'}>
-          Upgrade (${selectedTower.level >= BALANCE.towers.maxLevel ? 'MAX' : upgradeCost})
+        <button id="upgrade-btn" class="upgrade-btn${canUpgrade ? ' ready' : ''}" title="${upgradeTitle}" ${canUpgrade ? '' : 'disabled'}>
+          <span>${upgradeLabel}</span>${upgradePrice}
         </button>
         <button id="sell-btn">Sell (+${sellValue})</button>
         <button id="targeting-btn">Toggle Targeting</button>
@@ -818,12 +832,14 @@ export class UI {
       return;
     }
 
+    const isMaxed = selectedTower.level >= BALANCE.towers.maxLevel;
     const upgradeCost = game.getUpgradeCost(selectedTower.kind, selectedTower.level);
     const sellValue = Math.floor(game.getTowerInvestedCost(selectedTower) * BALANCE.economy.sellRefundPct);
-    const canUpgrade = selectedTower.level < BALANCE.towers.maxLevel && snapshot.money >= upgradeCost;
+    const canUpgrade = !isMaxed && snapshot.money >= upgradeCost;
 
-    this.mobileUpgradeEl.textContent =
-      selectedTower.level >= BALANCE.towers.maxLevel ? 'Upgrade MAX' : `Upgrade $${upgradeCost}`;
+    this.mobileUpgradeEl.textContent = isMaxed
+      ? 'Max level'
+      : `Upgrade Lv ${selectedTower.level + 1} · $${upgradeCost}`;
     this.mobileUpgradeEl.disabled = !canUpgrade;
     this.mobileSellEl.textContent = `Sell +${sellValue}`;
     this.mobileSellEl.disabled = false;
@@ -896,6 +912,31 @@ export class UI {
     this.mapConfirmEl.classList.add('hidden');
   }
 
+  private upgradePreviewText(
+    kind: TowerKind,
+    current: ReturnType<Game['getTowerStats']>,
+    next: ReturnType<Game['getTowerStats']>,
+  ): string {
+    if (kind === 'relay') {
+      return `range aura +${Math.round(current.supportRangeBoost * 100)}% → +${Math.round(next.supportRangeBoost * 100)}%`;
+    }
+    if (kind === 'amp') {
+      return `damage aura +${Math.round(current.supportDamageBoost * 100)}% → +${Math.round(next.supportDamageBoost * 100)}%`;
+    }
+    if (kind === 'bank') {
+      return `+${current.incomePerWave} → +${next.incomePerWave} credits per wave`;
+    }
+    const parts = [`damage ${current.damage.toFixed(1)} → ${next.damage.toFixed(1)}`];
+    if (kind === 'decay') {
+      parts.push(`decay ${current.dotDamagePerSecond.toFixed(1)} → ${next.dotDamagePerSecond.toFixed(1)}/s`);
+    }
+    if (next.fireRate > current.fireRate + 0.005) {
+      parts.push(`rate ${current.fireRate.toFixed(2)} → ${next.fireRate.toFixed(2)}/s`);
+    }
+    parts.push(`range ${current.range.toFixed(0)} → ${next.range.toFixed(0)}`);
+    return parts.join(', ');
+  }
+
   private specialText(kind: TowerKind, stats: ReturnType<Game['getTowerStats']>): string {
     if (kind === 'nova') {
       return `Splash ${stats.splashRadius.toFixed(0)}`;
@@ -904,7 +945,8 @@ export class UI {
       return `Slow ${(stats.slowPct * 100).toFixed(0)}% for ${stats.slowDuration.toFixed(1)}s`;
     }
     if (kind === 'chain') {
-      return '4-target chain beam';
+      const chain = BALANCE.towers.stats.chain;
+      return `Arcs to ${chain.chainTargets} enemies, ${Math.round(chain.chainFalloff * 100)}% per jump`;
     }
     if (kind === 'laser') {
       return 'Cardinal rail beam across the map';

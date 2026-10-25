@@ -22,9 +22,9 @@ const BONUS_ORB_RADIUS = 14;
 const UPCOMING_WAVE_PREVIEW_COUNT = 3;
 const EARLY_WAVE_REWARD_MULTIPLIER = 1.05;
 const SPAWN_STAGGER_DISTANCE = BALANCE.map.gridSizePx * 0.28;
-const CHAIN_MAX_TARGETS = 4;
-const CHAIN_JUMP_RANGE = 102;
-const CHAIN_DAMAGE_FALLOFF = 0.64;
+const CHAIN_MAX_TARGETS = BALANCE.towers.stats.chain.chainTargets;
+const CHAIN_JUMP_RANGE = BALANCE.towers.stats.chain.chainJumpRange;
+const CHAIN_DAMAGE_FALLOFF = BALANCE.towers.stats.chain.chainFalloff;
 const BEAM_LIFETIME = 0.09;
 const LASER_LINE_HALF_WIDTH = 10;
 function clamp(value: number, min: number, max: number): number {
@@ -576,14 +576,13 @@ export class Game {
     const range = base.range * BALANCE.towers.rangeMultiplierByLevel[levelIndex] * rangeBoost;
     const fireRate =
       base.fireRate * BALANCE.towers.fireRateMultiplierByType[tower.kind][levelIndex] * fireRateBoost;
-    const supportDamageBoost =
-      supportDamageBoostFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex];
-    const supportRangeBoost =
-      supportRangeBoostFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex];
+    const supportMultiplier = BALANCE.towers.supportMultiplierByLevel[levelIndex];
+    const supportDamageBoost = supportDamageBoostFor(tower.kind) * supportMultiplier;
+    const supportRangeBoost = supportRangeBoostFor(tower.kind) * supportMultiplier;
     const dotDamagePerSecond =
       dotDamagePerSecondFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex] * damageBoost;
     const dotDuration = dotDurationFor(tower.kind);
-    const incomePerWave = Math.round(incomePerWaveFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex]);
+    const incomePerWave = Math.round(incomePerWaveFor(tower.kind) * supportMultiplier);
 
     return {
       damage,
@@ -714,9 +713,9 @@ export class Game {
       slowDuration: base.slowDuration,
       dotDamagePerSecond: dotDamagePerSecondFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex] * damageBoost,
       dotDuration: dotDurationFor(tower.kind),
-      supportDamageBoost: supportDamageBoostFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex],
-      supportRangeBoost: supportRangeBoostFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex],
-      incomePerWave: Math.round(incomePerWaveFor(tower.kind) * BALANCE.towers.damageMultiplierByLevel[levelIndex]),
+      supportDamageBoost: supportDamageBoostFor(tower.kind) * BALANCE.towers.supportMultiplierByLevel[levelIndex],
+      supportRangeBoost: supportRangeBoostFor(tower.kind) * BALANCE.towers.supportMultiplierByLevel[levelIndex],
+      incomePerWave: Math.round(incomePerWaveFor(tower.kind) * BALANCE.towers.supportMultiplierByLevel[levelIndex]),
     };
   }
 
