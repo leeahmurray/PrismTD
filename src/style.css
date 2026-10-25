@@ -372,6 +372,58 @@ body {
   gap: 12px;
 }
 
+/* On the game page the sidebar starts level with the map; the wave and
+   power-up strip above the map lives in the header row. */
+.game-layout > .ui-sidebar {
+  grid-row: 2;
+}
+
+/* The money/lives table is the third section of the top row: it sits in the
+   right column above Tower Select and shares the map's top edge. */
+.ui-status {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
+  min-width: 0;
+}
+
+.ui-status:empty {
+  display: none;
+}
+
+.ui-status .status-card {
+  background: linear-gradient(180deg, rgba(22, 31, 47, 0.9), rgba(12, 18, 32, 0.92));
+  border: 1px solid rgba(42, 76, 127, 0.95);
+  box-shadow: 0 0 14px rgba(42, 169, 255, 0.2);
+  padding: 10px 12px;
+  gap: 6px;
+  align-items: stretch;
+}
+
+/* The title only shows when the table is its own section in the right column. */
+.status-title {
+  display: none;
+}
+
+.ui-status .status-title {
+  display: block;
+  color: #dff4ff;
+}
+
+.ui-status .status-layout {
+  min-height: 0;
+  justify-items: stretch;
+}
+
+.ui-status .hud-table {
+  width: 100%;
+  margin-left: 0;
+}
+
+.ui-status .hud-cell {
+  min-height: 35px;
+}
+
 .incoming-panel {
   display: flex;
   flex-direction: column;
@@ -447,6 +499,94 @@ body {
   margin: 0;
   font-size: 13px;
   color: #9fb8d6;
+}
+
+/* Waves and power ups sit in one horizontal strip between the mode bar and
+   the map. On phones both panels leave the strip, so it collapses. */
+.top-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+  align-items: stretch;
+}
+
+.top-strip:empty {
+  display: none;
+}
+
+.top-strip > .panel {
+  padding: 10px 12px;
+}
+
+.top-strip .incoming-panel {
+  gap: 6px;
+}
+
+.top-strip .incoming-list {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* Wave cards share the power-up button look: label, contents, then the
+   reward on the bottom line where the power-up state sits. */
+.top-strip .incoming-wave {
+  flex: 1 1 0;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 3px;
+  justify-items: start;
+  padding: 7px 9px;
+  border: 1px solid var(--panel-border);
+  background: linear-gradient(180deg, rgba(18, 28, 46, 0.94), rgba(10, 18, 32, 0.96));
+}
+
+.top-strip .incoming-head {
+  display: contents;
+}
+
+.top-strip .incoming-head span {
+  white-space: nowrap;
+}
+
+.top-strip .incoming-head span:first-child {
+  order: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.84rem;
+}
+
+.top-strip .incoming-enemies {
+  order: 2;
+  align-self: start;
+  gap: 4px 10px;
+}
+
+.top-strip .incoming-reward {
+  order: 3;
+  align-self: end;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.top-strip .ability-panel {
+  gap: 6px 8px;
+  align-content: start;
+}
+
+.top-strip .ability-btn {
+  min-height: 0;
+  height: 100%;
+  gap: 3px;
+  padding: 7px 9px;
+}
+
+.top-strip .ability-desc {
+  line-height: 1.25;
 }
 
 .enemy-glyph {
@@ -538,6 +678,17 @@ body {
   grid-template-columns: 560px minmax(0, 1fr);
   gap: 6px;
   align-items: center;
+}
+
+/* On desktop the status table leaves the header, so the logo gets the whole
+   top row to itself with room to breathe above the mode bar. */
+.game-layout .header-top:not(:has(.status-card)) {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 10px 0 6px;
+}
+
+.game-layout .header-top:not(:has(.status-card)) .logo-image {
+  width: min(400px, 100%);
 }
 
 .logo-card {
@@ -1643,10 +1794,20 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .ui-sidebar {
+  .ui-sidebar,
+  .game-layout > .ui-sidebar {
     grid-column: 1;
     grid-row: auto;
     flex-direction: column;
+  }
+
+  .ui-status {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .left-column > .canvas-shell {
+    grid-row: 3;
   }
 
   .header-top {

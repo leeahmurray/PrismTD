@@ -38,6 +38,7 @@ export function mountGameApp(app: HTMLDivElement): void {
           <canvas id="game-canvas" width="960" height="540"></canvas>
         </div>
       </div>
+      <div id="ui-status" class="ui-status"></div>
       <div id="ui-sidebar" class="ui-sidebar"></div>
     </div>
     <footer class="site-footer">
@@ -59,6 +60,7 @@ export function mountGameApp(app: HTMLDivElement): void {
   const canvas = app.querySelector<HTMLCanvasElement>('#game-canvas');
   const headerRoot = app.querySelector<HTMLDivElement>('#ui-header');
   const sidebarRoot = app.querySelector<HTMLDivElement>('#ui-sidebar');
+  const statusRoot = app.querySelector<HTMLDivElement>('#ui-status');
   if (!canvas || !headerRoot || !sidebarRoot) {
     throw new Error('Missing game nodes');
   }
@@ -325,7 +327,7 @@ function setupUiSfx(): UiSfx {
   const uiSfx = setupUiSfx();
   const isCoarsePointerDevice = window.matchMedia('(pointer: coarse)').matches;
 
-  const ui = new UI(headerRoot, sidebarRoot, {
+  const ui = new UI(headerRoot, sidebarRoot, statusRoot, {
   onBuildSelect: (kind) => {
     const snapshot = game.getSnapshot();
     game.setPlacement(snapshot.placingTowerKind === kind ? null : kind);

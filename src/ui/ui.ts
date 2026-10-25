@@ -38,6 +38,9 @@ export class UI {
   private headerRoot: HTMLElement;
 
   private sidebarRoot: HTMLElement;
+  private statusRoot: HTMLElement | null;
+  private headerTopEl: HTMLDivElement;
+  private statusCardEl: HTMLDivElement;
 
   private actions: UIActions;
 
@@ -95,6 +98,7 @@ export class UI {
   private buildPanel: HTMLDivElement;
 
   private incomingPanel: HTMLDivElement;
+  private topStripEl: HTMLDivElement;
 
   private incomingListEl: HTMLDivElement;
 
@@ -138,9 +142,18 @@ export class UI {
 
   private maps: string[] = [];
 
-  constructor(headerRoot: HTMLElement, sidebarRoot: HTMLElement, actions: UIActions) {
+  constructor(
+    headerRoot: HTMLElement,
+    sidebarRoot: HTMLElement,
+    statusRoot: HTMLElement | null,
+    actions: UIActions,
+  ) {
     this.headerRoot = headerRoot;
     this.sidebarRoot = sidebarRoot;
+    this.statusRoot = statusRoot;
+    if (this.statusRoot) {
+      this.statusRoot.innerHTML = '';
+    }
     this.actions = actions;
     this.mobileLayoutQuery = window.matchMedia('(max-width: 960px)');
 
@@ -153,6 +166,8 @@ export class UI {
 
     const statusCard = document.createElement('div');
     statusCard.className = 'status-card';
+    statusCard.innerHTML = '<strong class="status-title">Status</strong>';
+    this.statusCardEl = statusCard;
 
     this.moneyEl = document.createElement('span');
     this.interestEl = document.createElement('span');
@@ -381,6 +396,9 @@ export class UI {
     utilityRow.className = 'status-utility-row';
     utilityRow.append(modeControl, mapControl, waveControls, musicControl);
 
+    this.topStripEl = document.createElement('div');
+    this.topStripEl.className = 'top-strip';
+
     this.mobileActionsEl = document.createElement('div');
     this.mobileActionsEl.className = 'mobile-tower-actions hidden';
 
@@ -412,8 +430,9 @@ export class UI {
     const headerTop = document.createElement('div');
     headerTop.className = 'header-top';
     headerTop.append(logoCard, statusCard);
+    this.headerTopEl = headerTop;
 
-    this.headerRoot.append(headerTop, utilityRow, this.mobileActionsEl, this.mobileAbilityDockEl, this.musicModalEl);
+    this.headerRoot.append(headerTop, utilityRow, this.topStripEl, this.mobileActionsEl, this.mobileAbilityDockEl, this.musicModalEl);
 
     this.incomingPanel = document.createElement('div');
     this.incomingPanel.className = 'panel incoming-panel';
@@ -509,7 +528,9 @@ export class UI {
       this.cancelMapSwitch();
     });
 
-    this.sidebarRoot.append(this.incomingPanel, this.buildPanel, this.selectedPanel, this.abilityPanel);
+    this.placeStatusCard(false);
+    this.topStripEl.append(this.incomingPanel, this.abilityPanel);
+    this.sidebarRoot.append(this.buildPanel, this.selectedPanel);
 
     this.syncMusicState();
     this.updateModeDisplay();
@@ -947,6 +968,8 @@ export class UI {
 
     this.panelLayoutKey = nextLayoutKey;
 
+    this.placeStatusCard(mobileLayout);
+
     if (mobileLayout) {
       this.abilityPanel.classList.add('mobile-compact');
       this.mobileAbilityDockEl.append(this.abilityPanel);
@@ -955,7 +978,18 @@ export class UI {
     }
 
     this.abilityPanel.classList.remove('mobile-compact');
-    this.sidebarRoot.append(this.incomingPanel, this.buildPanel, this.selectedPanel, this.abilityPanel);
+    this.topStripEl.append(this.incomingPanel, this.abilityPanel);
+    this.sidebarRoot.append(this.buildPanel, this.selectedPanel);
+  }
+
+  /** On desktop the money/lives table sits in the right column above Tower
+   *  Select; on phones it stays in the header under the logo. */
+  private placeStatusCard(mobileLayout: boolean): void {
+    if (!mobileLayout && this.statusRoot) {
+      this.statusRoot.append(this.statusCardEl);
+      return;
+    }
+    this.headerTopEl.append(this.statusCardEl);
   }
 
   private renderIncoming(snapshot: GameSnapshot): void {
